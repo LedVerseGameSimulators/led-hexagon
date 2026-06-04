@@ -9,7 +9,7 @@ import json
 from loguru import logger
 import datetime
 
-from .config import API_HOST, API_PORT, API_DEBUG, GAME_NAME
+from .config import API_HOST, API_PORT, API_DEBUG, GAME_NAME, GAMES_ROOT
 from .models import (
     LoginRequest, LoginResponse, PlayerInfo,
     StartGameRequest, StartGameResponse,
@@ -258,7 +258,7 @@ async def get_game_settings():
     import shelve
 
     try:
-        setting_path = "/Users/apple/parallel-work/ledhexagon_clone/setting/led_parameter"
+        setting_path = str(GAMES_ROOT) + "/setting/led_parameter"
         db = shelve.open(setting_path)
 
         # Load LED layout and dimensions
@@ -299,7 +299,7 @@ async def get_levels():
     """
     import os, glob as _glob
 
-    clone = "/Users/apple/parallel-work/ledhexagon_clone"
+    clone = str(GAMES_ROOT)
 
     BUCKETS = [
         ("extra",    os.path.join(clone, "Extra", "*.led"),          False, "led"),

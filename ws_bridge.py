@@ -1,3 +1,4 @@
+from pathlib import Path
 """
 WebSocket bridge: headless API game state → simulator UI
 Connects to http://localhost:8000 API, broadcasts game state via WebSocket
@@ -18,7 +19,7 @@ import httpx
 app = FastAPI()
 
 # Serve static simulator files
-SIMULATOR_STATIC = "/Users/apple/parallel-work/ledhexagon_clone/simulator/static"
+SIMULATOR_STATIC = str(Path(__file__).resolve().parent / "games" / "simulator" / "static")
 app.mount("/static", StaticFiles(directory=SIMULATOR_STATIC), name="static")
 
 HOST = "127.0.0.1"

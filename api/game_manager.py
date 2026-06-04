@@ -9,13 +9,13 @@ import os
 import shelve as _shelve
 from typing import Dict, Optional
 from loguru import logger
-from .config import GAME_TIMEOUT_SECONDS, MAX_CONCURRENT_GAMES
+from .config import GAME_TIMEOUT_SECONDS, MAX_CONCURRENT_GAMES, GAMES_ROOT
 
 # Will import after config is set
 # from game_play.Play import Play
 
 # Real game settings live in the decompiled project's shelve DBs.
-_CLONE_ROOT = "/Users/apple/parallel-work/ledhexagon_clone"
+_CLONE_ROOT = str(GAMES_ROOT)
 _LED_PARAM = f"{_CLONE_ROOT}/setting/led_parameter"
 _DEBUG_PARAM = f"{_CLONE_ROOT}/setting/debug_parameter"
 
@@ -377,7 +377,7 @@ class GameManager:
             # Eagerly set multiplayer from file extension BEFORE the load
             # thread starts, so _consume_cell respawns correctly even if
             # a press arrives before the shelve is fully loaded (~7s).
-            _clone = "/Users/apple/parallel-work/ledhexagon_clone"
+            _clone = str(GAMES_ROOT)
             _ledb = os.path.join(_clone, "source", "---", f"{level}.ledb")
             if os.path.exists(_ledb):
                 game.multiplayer = True
@@ -436,7 +436,7 @@ class GameManager:
                     #   source/--/*.led  → advanced 1P
                     #   source/-/*.led   → pro 1P
                     level_id = str(game.level) if game.level else "17"
-                    clone = "/Users/apple/parallel-work/ledhexagon_clone"
+                    clone = str(GAMES_ROOT)
                     candidates = [
                         os.path.join(clone, "Extra",      f"{level_id}.led"),
                         os.path.join(clone, "source", "---", f"{level_id}.ledb"),

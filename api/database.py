@@ -1,7 +1,7 @@
 """
 Database Wrapper - MySQL connection and queries
 """
-from .config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+from .config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, GAMES_ROOT
 from loguru import logger
 import sys
 import os
@@ -17,7 +17,7 @@ except ImportError:
     raise
 
 # Our own scores live in the same sqlite file as the game DB.
-_SCORES_DB = "/Users/apple/parallel-work/ledhexagon_clone/setting/ledplaydb.sqlite"
+_SCORES_DB = str(GAMES_ROOT) + "/setting/ledplaydb.sqlite"
 
 
 class Database:
