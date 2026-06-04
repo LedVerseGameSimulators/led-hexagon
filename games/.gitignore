@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+
+# Virtual environments
+.venv/
+.venv_build/
+venv/
+env/
+
+# PyInstaller output
+build/
+dist/
+*.spec.bak
+
+# Databases (runtime data — not committed)
+data/local_data.db
+setting/ledplaydb.sqlite
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Decompile workspace (original binary artifacts — not needed in repo)
+decompile_workspace/
+
+# Secrets / keys
+*.pem
+*.key

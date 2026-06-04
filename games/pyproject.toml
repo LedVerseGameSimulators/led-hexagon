@@ -1,0 +1,30 @@
+[project]
+name = "ledhexagon"
+version = "1.0.0"
+description = "Interactive LED hexagon floor/wall game controller"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pygame>=2.0.1",
+    "Pillow>=9.0.0",
+    "pyserial>=3.5",
+    "loguru>=0.5.3",
+    "pycryptodome>=3.15.0",
+    "rsa>=4.8",
+    "pynput>=1.7.6",
+    "moviepy>=1.0.3",
+    "imageio>=2.9.0",
+    "imageio-ffmpeg>=0.4.5",
+    "tqdm>=4.64.0",
+    "proglog>=0.1.9",
+    "colorama>=0.4.5",
+    "mysql-connector-python>=8.0.28",
+    "opencv-python>=4.5.0",
+    # Web simulator
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+]
+
+[tool.uv]
+# UV will download and manage its own CPython build (includes tkinter)
+python-preference = "managed"

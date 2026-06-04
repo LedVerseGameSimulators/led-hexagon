@@ -1,0 +1,89 @@
+---
+description: Full project context for LED Hex game simulator — always loaded so any agent session starts with complete background
+alwaysApply: true
+---
+
+# LED Hex — Project Context
+
+## What This Project Is
+A **Python re-implementation** of a Windows LED hexagon arcade game, originally distributed as a compiled `.exe` with a USB hardware dongle. The exe was decompiled (PyInstaller → pyinstxtractor → uncompyle6) and patched to run without hardware. It now runs cross-platform (macOS + Windows) with a browser-based LED simulator replacing the physical tiles.
+
+## How to Run It (Windows)
+```
+# One-click: installs deps on first run, then launches
+setup_and_run_windows.bat
+
+# Or manually:
+python -m venv .venv
+.venv\Scripts\activate
+pip install pygame pillow fastapi "uvicorn[standard]" websockets moviepy pycryptodome rsa loguru pyserial pynput
+python run_simulator.py
+```
+Browser simulator opens at **http://127.0.0.1:8765**
+
+## Entry Point
+`run_simulator.py` — patches platform-specific issues, then imports and launches the Tkinter GUI + FastAPI WebSocket server.
+
+## Architecture
+```
+run_simulator.py          ← entry point, platform patches
+gui/
+  gui_game_main.py        ← main Tkinter window, game flow, countdown timer
+  gui_game.py             ← game logic, scoring, result saving
+  gui_editor_game.py      ← EditorGame1 type game loop
+  gui_editor_game2.py     ← EditorGame2 type game loop (co-op)
+model_in/
+  led_group.py            ← LedGroup class, color normalization
+  led_layout.py           ← grid layout
+model/
+  setting.py              ← USE_SERIAL_HD flag (must be False on PC)
+simulator/
+  bridge.py               ← game → WebSocket frame serializer
+  ws_server.py            ← FastAPI server (port 8765), leaderboard API
+  static/index.html       ← browser LED grid renderer
+  static/leaderboard.html ← game results leaderboard
+tourist_record/
+  tourist_record_main.py  ← SQLite DB (./data/local_data.db)
+  gui_game_result_tourist.py ← score result window
+source/                   ← 57 game level folders (zip files)
+photo/, audio/, video/    ← assets
+use_dll/                  ← original hardware DLLs (dongle bypass)
+```
+
+## Critical Settings
+- `model/setting.py` → `USE_SERIAL_HD = False` — **must stay False** (no physical hardware)
+- `SDL_VIDEODRIVER` — set to `"dummy"` on macOS only; **do NOT set on Windows** (already handled in `run_simulator.py`)
+- Database path: `./data/local_data.db` (SQLite, created automatically)
+
+## Color System
+Each LED tile has **3 concentric rings**, each with its own RGB color:
+```python
+color = [[R0,G0,B0], [R1,G1,B1], [R2,G2,B2]]  # outer, middle, inner
+```
+Single RGB tuples are auto-expanded to 3 identical rings by `LedGroup._normalise_color()`.
+
+## Known Bugs Already Fixed
+- `AttributeError: 'tuple' object has no attribute 'copy'` → fixed in `led_group.py`
+- Score not resetting between games → fixed in `gui_editor_game.py`, `gui_editor_game2.py`
+- Score screen disappearing instantly → fixed (`try/except` around `.ico` load on macOS)
+- Timer running after game ends → fixed in `gui_game_main.py`
+- Score not saving if game ends early → fixed in `gui_game.py`
+- `UnboundLocalError: game_end` → fixed in `gui_editor_game2.py`
+
+## Windows-Specific Issues to Check First
+1. **Antivirus blocking** — whitelist the project folder
+2. **Missing Visual C++ Runtime** — install `vc_redist.x64.exe` from Microsoft
+3. **Python not in PATH** — reinstall Python with "Add to PATH" checked
+4. **`pygame` display error** — if `SDL_VIDEODRIVER=dummy` is set in env vars, unset it on Windows
+5. **`pynput` needs accessibility** — may show a UAC prompt or require admin on some Windows setups
+6. **Port 8765 in use** — kill any process using it: `netstat -ano | findstr 8765`
+
+## Debugging Workflow
+1. Run `setup_and_run_windows.bat` — read the full error in the console
+2. Share the error (red traceback text) — paste into this chat
+3. Common fix locations: `run_simulator.py` (startup), `gui/gui_game_main.py` (UI flow), `model/setting.py` (hardware flags)
+
+## GitHub Repo
+`git@github-rubaru:LedVerseGameSimulators/hex_led.git`
+GitHub Actions builds Windows `.exe` automatically on every push.
+Two artifacts: `RELEASE` (no console) and `DEBUG` (console visible for error reading).
