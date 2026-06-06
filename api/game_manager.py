@@ -650,40 +650,10 @@ class GameManager:
                                     if state[i][j]:
                                         game.try_score_cell(i, j)
 
-                        # 2) Build a SEPARATE display buffer (don't touch led_table).
+                        # 2) Build display buffer from led_table (3 rings per cell).
                         led_display = [_normalize_rings(cell)
                                        for row in grid for cell in row]
                         cols = led_table.led_col
-
-                        # 2a) PULSE: shimmer goal-color tiles between 60-100%
-                        #     brightness using a sin-wave (1s period).
-                        #     LedGroup.breath() oscillates to 0 making tiles
-                        #     invisible — replaced with this approach.
-                        #     Decor tiles remain static (no pulse).
-                        import math as _math
-                        pulse = 0.60 + 0.40 * (0.5 + 0.5 * _math.sin(total_pass * _math.pi * 2))
-                        goal_cs = {gc, gc2} - {None}
-                        for g in dgroup.values():
-                            try:
-                                sm = getattr(g, "start_member", None)
-                                if not sm:
-                                    continue
-                                if not (g.start_time_sec <= total_pass <= g.end_time_sec):
-                                    continue
-                                mc = _group_main_color(g.color)
-                                if mc not in goal_cs:
-                                    continue
-                                orig_rings = (g.color
-                                              if isinstance(g.color[0], (list, tuple))
-                                              else [g.color] * 3)
-                                bc = [[int(ch * pulse) for ch in ring]
-                                      for ring in orig_rings]
-                                for cell in sm:
-                                    ci = round(cell[0]); cj = round(cell[1])
-                                    if 0 <= ci < led_table.led_row and 0 <= cj < cols:
-                                        led_display[ci * cols + cj] = bc
-                            except Exception:
-                                continue
 
                         # 2b) FLASH: stepped tiles blink white ~0.4s then vanish.
                         now = time.time()
@@ -706,6 +676,8 @@ class GameManager:
                             life=game.life,
                             game_over=False,
                             led_display=led_display,
+                            grid_rows=led_table.led_row,
+                            grid_cols=led_table.led_col,
                         )
 
                         frame_counter["n"] += 1

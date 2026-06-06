@@ -6,6 +6,7 @@ Connects to http://localhost:8000 API, broadcasts game state via WebSocket
 
 import asyncio
 import json
+import os
 import threading
 import time
 from typing import Set
@@ -23,8 +24,11 @@ SIMULATOR_STATIC = str(Path(__file__).resolve().parent / "games" / "simulator" /
 app.mount("/static", StaticFiles(directory=SIMULATOR_STATIC), name="static")
 
 HOST = "127.0.0.1"
-PORT = 8765
-API_BASE_URL = "http://localhost:8000"
+_DEFAULT_API_PORT = 8002
+_DEFAULT_WS_PORT = 8767
+API_PORT = int(os.getenv("API_PORT", _DEFAULT_API_PORT))
+PORT = int(os.getenv("WS_BRIDGE_PORT", _DEFAULT_WS_PORT))
+API_BASE_URL = os.getenv("API_BASE_URL", f"http://localhost:{API_PORT}")
 
 class GameBridge:
     """Bridge between API and WebSocket clients"""
@@ -54,34 +58,36 @@ class GameBridge:
         # Use real LED display from game state, or fallback to empty grid.
         # Each cell = 3 ring colors [[R,G,B],[R,G,B],[R,G,B]] (outer,mid,inner).
         led_display = game_state.get("led_display", [])
+        rows = int(game_state.get("grid_rows") or 16)
+        cols = int(game_state.get("grid_cols") or 26)
+        expected = rows * cols
 
         def _empty_tile():
             return [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
 
-        if led_display and len(led_display) == 416:  # 16 * 26 = 416
+        def _cell_to_rings(cell):
+            if (isinstance(cell, (list, tuple)) and len(cell) >= 3
+                    and isinstance(cell[0], (list, tuple))):
+                return [list(cell[0]), list(cell[1]), list(cell[2])]
+            if isinstance(cell, (list, tuple)) and len(cell) >= 3:
+                rgb = list(cell[:3])
+                return [rgb, rgb, rgb]
+            return _empty_tile()
+
+        if led_display and len(led_display) == expected:
             grid = []
-            for i in range(16):
+            for i in range(rows):
                 row = []
-                for j in range(26):
-                    cell = led_display[i * 26 + j]
-                    # 3-ring cell: list of 3 rgb triples
-                    if (isinstance(cell, (list, tuple)) and len(cell) >= 3
-                            and isinstance(cell[0], (list, tuple))):
-                        row.append([list(cell[0]), list(cell[1]), list(cell[2])])
-                    # flat rgb -> broadcast to 3 rings
-                    elif isinstance(cell, (list, tuple)) and len(cell) >= 3:
-                        rgb = list(cell[:3])
-                        row.append([rgb, rgb, rgb])
-                    else:
-                        row.append(_empty_tile())
+                for j in range(cols):
+                    row.append(_cell_to_rings(led_display[i * cols + j]))
                 grid.append(row)
         else:
-            grid = [[_empty_tile() for _ in range(26)] for _ in range(16)]
+            grid = [[_empty_tile() for _ in range(cols)] for _ in range(rows)]
 
         msg = json.dumps({
             "type": "frame",
-            "rows": 16,
-            "cols": 26,
+            "rows": rows,
+            "cols": cols,
             "grid": grid,
             "fps": 60,
             "game_id": self.current_game_id

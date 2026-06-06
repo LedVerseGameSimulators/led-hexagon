@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const API_URL = 'http://localhost:8000'
+import { API_URL } from '../config'
 
 const CAT_LABEL = {
   extra:    { label: 'Extra',    desc: '10 test levels' },
@@ -86,9 +86,9 @@ export default function GameSettingsScreen({ game, onConfirm, onBack }) {
   return (
     <div className="screen">
       <div className="card">
-        <h1>Game Settings</h1>
+        <h1>🔷 LED Hex</h1>
         <p style={{ color: '#888', textAlign: 'center', marginTop: '-10px' }}>
-          {game?.toUpperCase()}
+          Game Settings
         </p>
 
         {/* Players */}

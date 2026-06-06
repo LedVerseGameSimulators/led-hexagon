@@ -155,7 +155,14 @@ class Play:
             group = value
             set_cell = group.start_member
             if set_cell is not None and self.group_in_time(group.start_time_sec, group.end_time_sec):
-                o_led_table.set_color_table_by_set_cell(set_cell, group.color)
+                # Match original GUI: breath() then draw with breath_color so
+                # each hex ring can show its own RGB (outer/mid/inner).
+                try:
+                    group.breath(time_pass)
+                    draw_color = group.breath_color
+                except Exception:
+                    draw_color = group.color
+                o_led_table.set_color_table_by_set_cell(set_cell, draw_color)
                 continue
 
         if self.callback:
