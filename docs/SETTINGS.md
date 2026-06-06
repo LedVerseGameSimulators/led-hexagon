@@ -1,7 +1,8 @@
-# LED Hex — Settings & Config Reference
+# Settings & Config Reference
 
-Source of truth for all game settings. Documents every config field, its real
-value, what it controls, and our implementation status.
+> **Per-game status:** [`LED_HEX_DEVELOPMENT_PLAYBOOK.md`](./LED_HEX_DEVELOPMENT_PLAYBOOK.md)
+
+Shelve field reference. Early ❌ markers below are **historical** — headless API now reads most game-rule fields.
 
 Status legend:
 - ✅ **used** — we read/honor it

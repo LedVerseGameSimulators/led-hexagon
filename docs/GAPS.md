@@ -1,5 +1,7 @@
 # Known Gaps & Open Questions
 
+> **Primary status:** [`LED_HEX_DEVELOPMENT_PLAYBOOK.md`](./LED_HEX_DEVELOPMENT_PLAYBOOK.md)
+
 Tracks where our headless impl diverges from the real decompiled game, what is
 **verified in code** vs **inferred/guessed**, and what's still uncertain.
 

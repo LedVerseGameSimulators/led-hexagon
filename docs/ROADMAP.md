@@ -1,5 +1,9 @@
 # Implementation Roadmap (post-study)
 
+> **Updated checklists:** [`LED_HEX_DEVELOPMENT_PLAYBOOK.md`](./LED_HEX_DEVELOPMENT_PLAYBOOK.md)
+
+Many Phase 1 items are **done** in the headless simulator. Remaining: hardware I/O (Phase 2), polish (Phase 3).
+
 Ordered by value × confidence × dependency. Each item: why, effort, risk.
 
 Guiding facts:
