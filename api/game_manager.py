@@ -11,6 +11,13 @@ from typing import Dict, Optional
 from loguru import logger
 from .config import GAME_TIMEOUT_SECONDS, MAX_CONCURRENT_GAMES, GAMES_ROOT
 
+USE_SERIAL_HD = os.environ.get("USE_SERIAL_HD", "0") == "1"
+if USE_SERIAL_HD:
+    import sys as _sys
+    _games_dir = str(GAMES_ROOT)
+    if _games_dir not in _sys.path:
+        _sys.path.insert(0, _games_dir)
+
 # Will import after config is set
 # from game_play.Play import Play
 
@@ -72,6 +79,36 @@ def load_real_settings() -> dict:
     _settings_cache = s
     logger.info(f"Loaded real settings: {s}")
     return s
+
+_HW_DEFAULT_ROWS = 16
+_HW_DEFAULT_COLS = 26
+_hw_led_control = None
+_hw_layout_type = 0
+
+def _hw_init():
+    global _hw_led_control, _hw_layout_type
+    if _hw_led_control is not None:
+        return _hw_led_control
+    try:
+        import shelve as _s
+        from led import led_control as _lc
+        db = _s.open(str(GAMES_ROOT / 'setting' / 'led_parameter'), flag='r')
+        list_com_info = db.get('list_com_info', [])
+        layout_type   = int(db.get('led_layout_type', 0))
+        no_use        = db.get('floor_layout_coors_no_use', [])
+        rows          = int(float(db.get('value_high', _HW_DEFAULT_ROWS)))
+        cols          = int(float(db.get('value_width', _HW_DEFAULT_COLS)))
+        db.close()
+        _lc.init_layout(layout_type, rows, cols, no_use)
+        errors = _lc.init_com(list_com_info)
+        if errors:
+            logger.warning(f"HW init COM errors (non-fatal): {errors}")
+        logger.info(f"Hardware ready: {len(list_com_info)} port(s), {rows}×{cols}, layout={layout_type}")
+        _hw_led_control = _lc
+        _hw_layout_type = layout_type
+    except Exception as e:
+        logger.error(f"Hardware init failed: {e}")
+    return _hw_led_control
 
 def _normalize_rings(cell):
     """Normalize a led_table cell to 3 ring colors [[r,g,b],[r,g,b],[r,g,b]]
@@ -404,6 +441,9 @@ class GameManager:
                 logger.info(f"Starting game loop: {game_id}")
                 game.running = True
 
+                if USE_SERIAL_HD:
+                    _hw_init()
+
                 # Import game modules
                 import shelve
                 import os
@@ -666,6 +706,16 @@ class GameManager:
                             on = int(el / 0.1) % 2 == 0
                             col = [255, 255, 255] if on else [0, 0, 0]
                             led_display[fi * cols + fj] = [col[:], col[:], col[:]]
+
+                        if USE_SERIAL_HD and _hw_led_control is not None:
+                            try:
+                                _rc = led_table.led_row
+                                _cc = led_table.led_col
+                                _ld2 = [[led_display[r * _cc + c] for c in range(_cc)] for r in range(_rc)]
+                                _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
+                                _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
+                            except Exception as _hw_err:
+                                logger.debug(f"HW I/O: {_hw_err}")
 
                         game.update_state(
                             score=game.score,

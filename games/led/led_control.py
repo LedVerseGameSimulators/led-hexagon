@@ -34,7 +34,7 @@ def get_com_num(com_info_str):
     try:
         idx_com_name_start = com_info_str.index("(")
         idx_com_name_end = com_info_str.index(")")
-        com_name = com_info_str[(idx_com_name_start + 1)[:idx_com_name_end]]
+        com_name = com_info_str[idx_com_name_start + 1:idx_com_name_end]
         return com_name
     except:
         logger.debug("get_com_num exception")
@@ -112,7 +112,7 @@ def draw_screen_by_com(layout_type, logic_2array):
             for com in list_com:
                 values = [
                  com[1], com[2]]
-                array = rect_position_arr[(int(values[0]) - 1)[:int(values[1])]]
+                array = rect_position_arr[int(values[0]) - 1:int(values[1])]
                 array_com_protocal = [255, 255]
                 for coors in list(reversed(array)):
                     for k in range(2, -1, -1):
@@ -134,7 +134,7 @@ def display_led_screen():
         for com in list_com:
             values = [
              com[1], com[2]]
-            array = m_led_color_one_array[(int(values[0]) - 1)[:int(values[1])]]
+            array = m_led_color_one_array[int(values[0]) - 1:int(values[1])]
             array_com_protocal = [255, 255]
             for tuple in list(reversed(array)):
                 array_com_protocal.append(tuple[0])
@@ -178,14 +178,14 @@ def read(com, state_table, start_num, read_size=3, block=False):
             logger.debug("{} read size {}", com.name, in_len)
         if in_len > 2:
             if in_len > read_size + 2:
-                data_want = data_read_buffer[(in_len - (read_size + 2))[:None]]
+                data_want = data_read_buffer[in_len - (read_size + 2):]
                 in_len = read_size + 2
     else:
         data_want = data_read_buffer
     index_of_fc = data_want.index(252)
     if index_of_fc < in_len - 2:
         start_fc_idx = index_of_fc + 2
-        arr_after_fc = data_want[start_fc_idx[:None]]
+        arr_after_fc = data_want[start_fc_idx:]
         len_arr_after_fc = len(arr_after_fc)
         last_num = start_num + logic_size - 1
         for i in range(0, len_arr_after_fc - 2, 3):
@@ -228,12 +228,12 @@ def read_new_no_completed(com_obj, rst_arr, start_num, read_size=3, block=False)
             com_obj[0].read_date_buffer = data_read_buffer.copy()
         if in_len > 2:
             if in_len >= read_size + 2:
-                data_want = data_read_buffer[(in_len - (read_size + 2))[:None]]
+                data_want = data_read_buffer[in_len - (read_size + 2):]
             else:
                 data_want = data_read_buffer
             index_of_fc = data_want.index(252)
             start_fc_idx = index_of_fc + 2
-            arr_after_fc = data_want[start_fc_idx[:None]]
+            arr_after_fc = data_want[start_fc_idx:]
             len_arr_after_fc = len(arr_after_fc)
             last_num = start_num + read_size - 1
             for i in range(len_arr_after_fc):
@@ -264,7 +264,7 @@ def update_screen_state_by_com_old(layout_type, state_table, state_2array):
             index_of_fc = data_read_buffer.index(252)
             start = index_of_fc + 2
             end = index_of_fc + 2 + data_read_buffer[index_of_fc + 1]
-            data_rst = data_read_buffer[start[:end]]
+            data_rst = data_read_buffer[start:end]
             tmp = src_idx_end - 1
             for i in range(src_idx_start, src_idx_end):
                 one_array[i] = data_rst[tmp - i] == 10
@@ -325,7 +325,7 @@ def get_led_screen_state():
             index_of_fc = data_read_buffer.index(252)
             start = index_of_fc + 2
             end = index_of_fc + 2 + data_read_buffer[index_of_fc + 1]
-            data_rst = data_read_buffer[start[:end]]
+            data_rst = data_read_buffer[start:end]
             tmp = src_idx_end - 1
             for i in range(src_idx_start, src_idx_end):
                 m_led_state_one_array[i] = data_rst[tmp - i] == 10
