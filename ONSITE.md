@@ -97,33 +97,56 @@ python test_hardware.py
 
 ---
 
-## Step 7 — Start game server
+## Step 7 — Install frontend dependencies
 
+```cmd
+cd C:\activerse\led-hexagon\frontend
+npm install
+```
+
+---
+
+## Step 8 — Start all 3 services
+
+**Option A — one command (recommended):**
+```cmd
+cd C:\activerse\led-hexagon
+scripts\start-dev.bat
+```
+
+**Option B — three terminals manually:**
+
+Terminal 1 — API:
 ```cmd
 cd C:\activerse\led-hexagon
 set USE_SERIAL_HD=1
 python -m uvicorn api.main:app --host 0.0.0.0 --port 8004
 ```
+Expected: `Hardware ready: 3 port(s), 16×26, layout=1`
 
-**Expected log:**
-```
-Hardware ready: 3 port(s), 16×26, layout=1
+Terminal 2 — ws_bridge:
+```cmd
+cd C:\activerse\led-hexagon
+set API_PORT=8004
+set WS_BRIDGE_PORT=8767
+python ws_bridge.py
 ```
 
-**PowerShell:**
-```powershell
-$env:USE_SERIAL_HD="1"
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8004
+Terminal 3 — Frontend:
+```cmd
+cd C:\activerse\led-hexagon\frontend
+npm run dev
 ```
 
 ---
 
-## Step 8 — Verify sim + hardware
+## Step 9 — Verify sim + hardware
 
-1. Browser → `http://localhost:8004`
+1. Browser → `http://localhost:5177`
 2. Start a Hexagon game
-3. Hexagon tiles light per game state (colored rings = active groups)
-4. Stepping on a colored tile scores
+3. Simulator iframe renders 16×26 hex grid (3 rings per tile)
+4. Hexagon tiles light per game state (colored rings = active groups)
+5. Stepping on a colored tile scores
 
 ---
 
