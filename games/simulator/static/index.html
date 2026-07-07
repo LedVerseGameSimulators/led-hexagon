@@ -223,7 +223,8 @@
 
 <script>
 // ── Configuration ──────────────────────────────────────────────────────
-const WS_URL = `ws://${location.host}/ws`;
+const _gameId = new URLSearchParams(location.search).get('game_id') || '';
+const WS_URL = `ws://${location.host}/ws${_gameId ? '?game_id=' + _gameId : ''}`;
 
 // Grid state (filled when first frame arrives)
 let ROWS = 16, COLS = 26;
