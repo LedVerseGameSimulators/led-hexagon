@@ -18,6 +18,77 @@ if USE_SERIAL_HD:
     if _games_dir not in _sys.path:
         _sys.path.insert(0, _games_dir)
 
+# Mock external hardware/GUI/media deps so game_play imports work headless.
+# Hardware (serial/led) is only mocked in sim mode; real modules load when
+# USE_SERIAL_HD=True. Mirrors the setup in the other 4 games.
+import sys
+from unittest.mock import MagicMock
+
+mocks = {
+    # GUI/Display
+    'tkinter': MagicMock(),
+    'tkinter.messagebox': MagicMock(),
+    'tkinter.font': MagicMock(),
+    'gui': MagicMock(),
+    'gui.app_gui': MagicMock(),
+    'gui.gui_debugging': MagicMock(),
+    'gui.gui_setting': MagicMock(),
+    'gui.language': MagicMock(),
+    'gui2': MagicMock(),
+    'gui2.gui_led_table_editor': MagicMock(),
+    'gui2.gui_led_canvas2': MagicMock(),
+    'gui2.gui_table_editor': MagicMock(),
+    'gui2.ui_player_setting': MagicMock(),
+    'gui2.ui_table': MagicMock(),
+    'gui2.gui_util': MagicMock(),
+    'ui_design': MagicMock(),
+    # Hardware: only mock in sim mode; real modules used when USE_SERIAL_HD=True
+    **({} if USE_SERIAL_HD else {
+        'serial': MagicMock(),
+        'serial.tools': MagicMock(),
+        'serial.tools.list_ports': MagicMock(),
+        'led': MagicMock(),
+        'led.led_control': MagicMock(),
+        'led.communication': MagicMock(),
+        'led.position_convert': MagicMock(),
+        'led.led_serial_thread': MagicMock(),
+        'led.led_control_c': MagicMock(),
+    }),
+    'net': MagicMock(),
+    'socket': MagicMock(),
+    # Audio/Video
+    'pygame': MagicMock(),
+    'pygame.mixer': MagicMock(),
+    'audio_play': MagicMock(),
+    'audio_play.audio': MagicMock(),
+    'moviepy': MagicMock(),
+    'moviepy.editor': MagicMock(),
+    'cv2': MagicMock(),
+    # Input
+    'pynput': MagicMock(),
+    'pynput.keyboard': MagicMock(),
+    'pynput.mouse': MagicMock(),
+    # Encryption
+    'encryption': MagicMock(),
+    'encryption.yanqian': MagicMock(),
+    'rsa': MagicMock(),
+    'Crypto': MagicMock(),
+    'Crypto.Hash': MagicMock(),
+    'Crypto.Cipher': MagicMock(),
+    'Crypto.PublicKey': MagicMock(),
+    'Crypto.Signature': MagicMock(),
+    # Database
+    'mysql': MagicMock(),
+    'mysql.connector': MagicMock(),
+    # Image processing
+    'numpy': MagicMock(),
+    'PIL': MagicMock(),
+    'PIL.Image': MagicMock(),
+    'PIL.ImageTk': MagicMock(),
+}
+for _mod_name, _mock in mocks.items():
+    sys.modules[_mod_name] = _mock
+
 # Will import after config is set
 # from game_play.Play import Play
 
@@ -84,6 +155,19 @@ _HW_DEFAULT_ROWS = 16
 _HW_DEFAULT_COLS = 26
 _hw_led_control = None
 _hw_layout_type = 0
+_HW_DRAW_INTERVAL = float(os.environ.get("HW_DRAW_INTERVAL", "0.045"))
+_hw_serial_lock = threading.Lock()
+
+
+def _normalize_rgb(cell):
+    """Ensure [R,G,B] ints. Used only for flat-RGB games; hexagon uses 3-ring format."""
+    if isinstance(cell, (list, tuple)):
+        if len(cell) >= 3 and isinstance(cell[0], (int, float)):
+            return [int(cell[0]), int(cell[1]), int(cell[2])]
+        if len(cell) == 1:
+            return _normalize_rgb(cell[0])
+    return [0, 0, 0]
+
 
 def _hw_init():
     global _hw_led_control, _hw_layout_type
@@ -394,14 +478,22 @@ class GameManager:
     def __init__(self):
         self.games: Dict[str, GameInstance] = {}
         self.lock = threading.Lock()
+        self._create_lock = threading.Lock()
+        self.zombie_threads = []
         logger.info("GameManager initialized")
 
     def clear_all(self):
-        """Stop and remove all existing games (kiosk = one game at a time)."""
+        """Stop and remove all existing games. Joins threads (3s timeout) before clearing."""
         with self.lock:
             for gid, g in list(self.games.items()):
                 g.running = False
+            threads = [(gid, g.thread) for gid, g in self.games.items() if getattr(g, "thread", None)]
             self.games.clear()
+        for gid, t in threads:
+            t.join(timeout=3.0)
+            if t.is_alive():
+                logger.warning(f"Thread {gid} didn't stop in 3s — zombie")
+                self.zombie_threads.append(gid)
         logger.info("Cleared all existing games")
 
     def create_game(self, card_id: str, level: int, difficulty: str) -> str:
@@ -439,7 +531,6 @@ class GameManager:
         def _run_game():
             try:
                 logger.info(f"Starting game loop: {game_id}")
-                game.running = True
 
                 if USE_SERIAL_HD:
                     _hw_init()
@@ -707,15 +798,21 @@ class GameManager:
                             col = [255, 255, 255] if on else [0, 0, 0]
                             led_display[fi * cols + fj] = [col[:], col[:], col[:]]
 
-                        if USE_SERIAL_HD and _hw_led_control is not None:
-                            try:
-                                _rc = led_table.led_row
-                                _cc = led_table.led_col
-                                _ld2 = [[led_display[r * _cc + c] for c in range(_cc)] for r in range(_rc)]
-                                _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
-                                _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
-                            except Exception as _hw_err:
-                                logger.debug(f"HW I/O: {_hw_err}")
+                        _now = time.time()
+                        if USE_SERIAL_HD and _hw_led_control is not None and \
+                                _now - getattr(game, "_hw_last_draw", 0) >= _HW_DRAW_INTERVAL:
+                            with _hw_serial_lock:
+                                try:
+                                    _rc = led_table.led_row
+                                    _cc = led_table.led_col
+                                    # hexagon: cells are 3-ring [[r,g,b],[r,g,b],[r,g,b]] — pass through unchanged
+                                    _ld2 = [[led_display[r * _cc + c] for c in range(_cc)] for r in range(_rc)]
+                                    _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
+                                    game._hw_last_draw = _now
+                                    game._hw_draw_count = getattr(game, "_hw_draw_count", 0) + 1
+                                    _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
+                                except Exception as _hw_err:
+                                    logger.warning(f"HW I/O: {_hw_err}")
 
                         game.update_state(
                             score=game.score,
@@ -789,6 +886,8 @@ class GameManager:
                     game_over_reason=str(e)
                 )
 
+        game.running = True   # set synchronously — clear_all() won't skip this thread
+        game._sim_pressed = set()
         game.thread = threading.Thread(target=_run_game, daemon=True)
         game.thread.start()
 
