@@ -436,6 +436,7 @@ class GameInstance:
         self._session_over = False     # True -> stop the session loop
         self._level_cleared = False    # True -> advance to next level
         self._restart_level = False    # True -> replay same level (life=0, time left)
+        self._end_reason = None        # why the session loop exited: timeout/None(=cleared)
 
         self.current_state = {
             "score": 0,
@@ -454,6 +455,7 @@ class GameInstance:
             "result": None,
             "current_level": None,
             "levels_cleared": 0,
+            "started_at": "",
         }
         self.thread = None
 
@@ -808,13 +810,13 @@ class GameManager:
                             )
                         except Exception:
                             game.zone = None
-                    # Multiplayer re-derived per level (levels can have SCREEN_LIGHT
-                    # groups indicating a P2 goal indicator). Faithful to the
-                    # original unconditional assignment (not upgrade-only).
-                    game.multiplayer = any(
-                        getattr(g, "type", None) == Setting.SCREEN_LIGHT
-                        for g in dg.values()
-                    )
+                    # Upgrade-only: never flip an established 2P session back to
+                    # 1P. Session lock (set at marathon start) is the floor.
+                    if any(getattr(g, "type", None) == Setting.SCREEN_LIGHT
+                           for g in dg.values()):
+                        game.multiplayer = True
+                    elif getattr(game, "_session_is_2p", False):
+                        game.multiplayer = True
                     # Init breath/anim state for all groups.
                     for g in dg.values():
                         try:
@@ -1164,7 +1166,15 @@ class GameManager:
                 # the callback returns False (level cleared -> advance, or session
                 # over -> stop). End on life<=0, timer<=0, or sequence exhausted.
                 game.session_start = time.time()
+                import datetime as _dt
+                game.update_state(started_at=_dt.datetime.now().isoformat(timespec="seconds"))
                 game.level_sequence = _build_level_sequence(game.level)
+                # 2P-ness is fixed for the whole session (chain is category-
+                # locked to .led=1P or .ledb=2P). Lock it so a later level whose
+                # data lacks a SCREEN_LIGHT group can't flip multiplayer False.
+                game._session_is_2p = str(game.level_sequence[0]).endswith(".ledb") if game.level_sequence else False
+                game.multiplayer = game._session_is_2p
+                game._end_reason = None
                 logger.info(f"Session: {len(game.level_sequence)} levels from "
                             f"'{game.level}' (5-min marathon)")
 
@@ -1182,6 +1192,7 @@ class GameManager:
                     session_elapsed = time.time() - game.session_start
                     if session_elapsed > game.game_time_sec:
                         game._session_over = True
+                        game._end_reason = "timeout"
                         break
 
                     lvl_id = os.path.basename(lvl_path).rsplit(".", 1)[0]
@@ -1244,10 +1255,19 @@ class GameManager:
 
                 # Session finished (timer/lives/sequence end).
                 game._session_over = True
-                final_reason = game.get_state().get("game_over_reason") or "session_end"
-                final_result = game.get_state().get("result")
-                if final_result is None:
-                    final_result = 1  # cleared the whole series within time
+                # Result honesty: 1 = cleared the whole level chain within time,
+                # 2 = ran out of session time, 0 = out of life. Only a genuine
+                # chain-exhaustion (loop finished with no timeout/out-of-life
+                # reason) counts as "complete".
+                state_result = game.get_state().get("result")
+                if state_result is not None:
+                    final_result = state_result          # frame callback already decided (out-of-life)
+                elif game._end_reason == "timeout":
+                    final_result = 2
+                else:
+                    final_result = 1                     # chain fully cleared in time
+                final_reason = (game.get_state().get("game_over_reason")
+                                or game._end_reason or "session_end")
                 logger.info(f"Session over: reason={final_reason}, "
                             f"score={game.score}, levels_cleared={game.levels_cleared}")
                 game.update_state(game_over=True, time_left=0,
