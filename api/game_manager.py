@@ -417,9 +417,11 @@ class GameInstance:
         # _setup_level, true only for "--" tier files).
         self._memory_mode = False
         self.hint_cells = set()        # current frame's hint-tile position(s)
-        self._reveal_duration = 5.0    # seconds a reveal stays visible
+        self._reveal_duration = 5.0    # seconds a reveal stays visible, and also
+                                        # the hint tile's per-player phase length
         self._hint_score_cost = 5      # score paid per hint press (no life loss)
-        self._reveal_until = 0.0       # total_pass threshold; hidden after this
+        self._reveal_until = 0.0       # total_pass threshold; P1 targets hidden after this
+        self._reveal2_until = 0.0      # same, for P2 targets (2P memory levels)
         self._hint_pressed = set()     # edge-trigger guard: fire once per press,
                                         # not once per frame while held (mirrors
                                         # scored_active's pattern for goal/deduct)
@@ -474,7 +476,8 @@ class GameInstance:
         self._restart_level = False
         self._memory_mode = False      # re-set correctly in _setup_level per level
         self.hint_cells = set()
-        self._reveal_until = self._reveal_duration  # fresh level -> initial 5s reveal
+        self._reveal_until = self._reveal_duration   # fresh level -> initial 5s reveal
+        self._reveal2_until = self._reveal_duration  # same, for P2 (2P memory levels)
         self._hint_pressed = set()
 
     def _current_level_time(self) -> float:
@@ -515,10 +518,30 @@ class GameInstance:
         if self._memory_mode and (i, j) in self.hint_cells:
             if (i, j) not in self._hint_pressed:
                 self._hint_pressed.add((i, j))
-                self.score -= self._hint_score_cost
-                if self.score < 0:
-                    self.score = 0
-                self._reveal_until = total_pass + self._reveal_duration
+                # Single shared button, no per-player input channel exists on
+                # this floor -- attribution instead comes from which color the
+                # tile is CURRENTLY showing when the press lands. It alternates
+                # every _reveal_duration seconds: 2P levels cycle P1-color ->
+                # P2-color -> ...; 1P levels cycle color -> black (off, so a
+                # press then is simply a no-op -- the button isn't "showing"
+                # for anyone at that moment).
+                phase = int(total_pass // self._reveal_duration) % 2
+                if not self.multiplayer:
+                    if phase == 0:
+                        self.score -= self._hint_score_cost
+                        if self.score < 0:
+                            self.score = 0
+                        self._reveal_until = total_pass + self._reveal_duration
+                elif phase == 0:
+                    self.score -= self._hint_score_cost
+                    if self.score < 0:
+                        self.score = 0
+                    self._reveal_until = total_pass + self._reveal_duration
+                else:
+                    self.score2 -= self._hint_score_cost
+                    if self.score2 < 0:
+                        self.score2 = 0
+                    self._reveal2_until = total_pass + self._reveal_duration
             return
         # Red hazard: penalty + HP loss (gated). Not edge-limited by
         # scored_active (standing on red keeps hurting, rate-limited by time).
@@ -759,9 +782,14 @@ class GameManager:
                     """Configure game state for a freshly-loaded level. Score,
                     score2, life, session timer all PERSIST (set elsewhere)."""
                     game.dict_group = dg  # for consume-on-hit
-                    # Memory mode: YC/advanced-tier ("--") levels only. Data-driven
-                    # by which tier folder the level came from, not the filename.
-                    game._memory_mode = (os.path.basename(os.path.dirname(lvl_path)) == "--")
+                    # Memory mode is a FILENAME property, not a folder one: the
+                    # 1P advanced tier ("--") is entirely YC01-18.led, but the
+                    # 2P tier ("---") mixes plain DK01-11.ledb with memory-mode
+                    # YCDK02-11.ledb in the SAME folder. So detect by whether
+                    # the level's own filename (not its tier folder) starts
+                    # with "YC" -- covers both 1P and 2P memory levels alike.
+                    stem = os.path.basename(lvl_path).rsplit(".", 1)[0]
+                    game._memory_mode = stem.upper().startswith("YC")
                     # Board length = max group end_time; board ends at min(board, session).
                     try:
                         game.board_time_sec = max(
@@ -838,6 +866,8 @@ class GameManager:
                         #    Memory mode: the WALL_LIGHT indicator cell doubles as
                         #    the hint tile -- pressable within its own data window.
                         hint_cells = set()
+                        hint1_color_full = None   # P1's true 3-ring color (memory-mode hint blink)
+                        hint2_color_full = None   # P2's true 3-ring color
                         for g in dgroup.values():
                             gtype = getattr(g, "type", None)
                             if not g.start_member:
@@ -847,6 +877,7 @@ class GameManager:
                             if gtype == Setting.WALL_LIGHT:
                                 game.goal_color = _group_main_color(g.color)
                                 if game._memory_mode:
+                                    hint1_color_full = hint1_color_full or g.color
                                     for cell in g.start_member:
                                         ci = round(cell[0]); cj = round(cell[1])
                                         if 0 <= ci < led_table.led_row and 0 <= cj < led_table.led_col:
@@ -854,6 +885,8 @@ class GameManager:
                             elif gtype == Setting.SCREEN_LIGHT:
                                 game.goal2_color = _group_main_color(g.color)
                                 game.multiplayer = True
+                                if game._memory_mode:
+                                    hint2_color_full = hint2_color_full or g.color
                         game.hint_cells = hint_cells
 
                         # 2) CLASSIFY floor (normal_led) cells:
@@ -1019,13 +1052,18 @@ class GameManager:
                         # visible per their own raw color).
                         if game._memory_mode:
                             TEAL_HIDDEN = [[0, 62, 62], [0, 62, 62], [0, 62, 62]]
-                            reveal_active = total_pass <= game._reveal_until
+                            BLACK_OFF = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+                            # Each player has their OWN reveal window (separate
+                            # hint presses -- see hint tile block below), not a
+                            # single shared one.
+                            reveal1_active = total_pass <= game._reveal_until
+                            reveal2_active = total_pass <= game._reveal2_until
                             if goal_cells:
-                                bright = _normalize_rings(goal_color_full) if reveal_active else TEAL_HIDDEN
+                                bright = _normalize_rings(goal_color_full) if reveal1_active else TEAL_HIDDEN
                                 for (ci, cj) in goal_cells:
                                     led_display[ci * cols + cj] = bright
                             if goal2_cells:
-                                bright2 = _normalize_rings(goal2_color_full) if reveal_active else TEAL_HIDDEN
+                                bright2 = _normalize_rings(goal2_color_full) if reveal2_active else TEAL_HIDDEN
                                 for (ci, cj) in goal2_cells:
                                     led_display[ci * cols + cj] = bright2
                             # Moving RED hazard (continuous, not one-shot deduct):
@@ -1043,6 +1081,25 @@ class GameManager:
                                 red_paint = _normalize_rings(red_color_full)
                                 for (ci, cj) in red_cells:
                                     led_display[ci * cols + cj] = red_paint
+                            # Hint tile itself: there's only ONE physical button
+                            # (P1's and P2's indicator groups sit on the same
+                            # cell, and the floor has no per-player input
+                            # channel), so it alternates every _reveal_duration
+                            # seconds to show whose turn it is. A press is
+                            # attributed to whichever player's color is showing
+                            # at that instant (see try_score_cell). 1P levels
+                            # reuse the identical cadence for a consistent look,
+                            # just with black standing in for "no second player".
+                            if hint_cells:
+                                hint_phase = int(total_pass // game._reveal_duration) % 2
+                                if not game.multiplayer:
+                                    hint_paint = _normalize_rings(hint1_color_full) if hint_phase == 0 else BLACK_OFF
+                                elif hint_phase == 0:
+                                    hint_paint = _normalize_rings(hint1_color_full)
+                                else:
+                                    hint_paint = _normalize_rings(hint2_color_full)
+                                for (ci, cj) in hint_cells:
+                                    led_display[ci * cols + cj] = hint_paint
 
                         # 2b) FLASH: stepped tiles blink white ~0.4s then vanish.
                         now = time.time()
