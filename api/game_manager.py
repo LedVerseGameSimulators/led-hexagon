@@ -867,6 +867,7 @@ class GameManager:
                         deduct_cells = set()
                         goal_color_full = None   # true 3-ring color (for reveal paint)
                         goal2_color_full = None
+                        red_color_full = None    # true 3-ring color (moving hazard, always shown)
                         gc = game.goal_color
                         gc2 = game.goal2_color
                         for g in dgroup.values():
@@ -898,6 +899,7 @@ class GameManager:
                                     deduct_cells.add((ci, cj))
                                 elif is_red:
                                     red_cells.add((ci, cj))
+                                    red_color_full = red_color_full or g.color
                                 elif same_color_2p:
                                     # Checkerboard spatial split so each player
                                     # has their own distinct tiles even when
@@ -1026,6 +1028,21 @@ class GameManager:
                                 bright2 = _normalize_rings(goal2_color_full) if reveal_active else TEAL_HIDDEN
                                 for (ci, cj) in goal2_cells:
                                     led_display[ci * cols + cj] = bright2
+                            # Moving RED hazard (continuous, not one-shot deduct):
+                            # always shows its true color, reveal or hidden alike,
+                            # since it's a live danger the player must dodge in
+                            # real time -- not a memorizable static position. Only
+                            # touches CURRENTLY-occupied cells (red_cells is
+                            # rebuilt fresh every frame from the group's live
+                            # position), so once the wave sweeps past, a cell is
+                            # simply no longer in red_cells and is left to render
+                            # whatever it actually is underneath (teal if it's a
+                            # hidden target, decor's own color otherwise) --
+                            # never forced back to any particular color here.
+                            if red_cells:
+                                red_paint = _normalize_rings(red_color_full)
+                                for (ci, cj) in red_cells:
+                                    led_display[ci * cols + cj] = red_paint
 
                         # 2b) FLASH: stepped tiles blink white ~0.4s then vanish.
                         now = time.time()
