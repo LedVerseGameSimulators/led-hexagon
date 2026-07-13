@@ -196,6 +196,34 @@ def _hw_init():
         logger.error(f"Hardware init failed: {e}")
     return _hw_led_control
 
+
+def _hw_blank_floor(led_table):
+    """Send one all-black frame (all 3 rings) to the physical floor.
+
+    Call on every game end/stop path (session-end, stop_game, clear_all) so
+    the hardware doesn't stay stuck lit with the last frame drawn before the
+    session ended — the per-frame draw call only runs inside the active
+    level loop, so nothing else ever blanks the floor once that loop stops.
+    Uses the SAME draw_screen_by_com call as normal gameplay frames, just
+    with an all-[0,0,0] grid on all 3 rings (outer/mid/inner) per hex tile.
+    No-op in sim mode / if hardware was never initialized.
+    """
+    if not (USE_SERIAL_HD and _hw_led_control is not None):
+        return
+    if led_table is None:
+        return
+    try:
+        rows = getattr(led_table, "led_row", _HW_DEFAULT_ROWS)
+        cols = getattr(led_table, "led_col", _HW_DEFAULT_COLS)
+        blank_cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  # 3 rings, all off
+        blank_grid = [[blank_cell for _ in range(cols)] for _ in range(rows)]
+        with _hw_serial_lock:
+            _hw_led_control.draw_screen_by_com(_hw_layout_type, blank_grid)
+        logger.info("HW: blank frame sent to floor (session end/stop)")
+    except Exception as e:
+        logger.warning(f"HW blank failed: {e}")
+
+
 def _normalize_rings(cell):
     """Normalize a led_table cell to 3 ring colors [[r,g,b],[r,g,b],[r,g,b]]
     (outer, mid, inner). Cell is normally a 3-ring list, but tolerate a flat
@@ -714,12 +742,20 @@ class GameManager:
             for gid, g in list(self.games.items()):
                 g.running = False
             threads = [(gid, g.thread) for gid, g in self.games.items() if getattr(g, "thread", None)]
+            # Capture led_table refs before self.games.clear() drops them —
+            # needed to send each cleared game's HW blank frame below.
+            led_tables = [(gid, getattr(g, "led_table", None)) for gid, g in self.games.items()]
             self.games.clear()
         for gid, t in threads:
             t.join(timeout=3.0)
             if t.is_alive():
                 logger.warning(f"Thread {gid} didn't stop in 3s — zombie")
                 self.zombie_threads.append(gid)
+        # Blank the floor for any game being cleared (e.g. a new game starting
+        # while a prior one was still running/stuck) — join threads first so
+        # we don't race a still-running frame callback's own draw call.
+        for gid, led_table in led_tables:
+            _hw_blank_floor(led_table)
         logger.info("Cleared all existing games")
 
     def create_game(self, card_id: str, level: int, difficulty: str) -> str:
@@ -1201,6 +1237,7 @@ class GameManager:
                     logger.warning(f"Empty level sequence; session cannot run: {game_id}")
                     game.update_state(game_over=True, game_over_reason="no_levels",
                                       time_left=0)
+                    _hw_blank_floor(getattr(game, "led_table", None))
                     game.running = False
                     return
 
@@ -1292,10 +1329,12 @@ class GameManager:
                 game.update_state(game_over=True, time_left=0,
                                   game_over_reason=final_reason, result=final_result,
                                   levels_cleared=game.levels_cleared)
+                _hw_blank_floor(getattr(game, "led_table", None))
                 game.running = False
 
             except Exception as e:
                 logger.error(f"Game error {game_id}: {e}", exc_info=True)
+                _hw_blank_floor(getattr(game, "led_table", None))
                 game.running = False
                 game.update_state(
                     game_over=True,
@@ -1316,6 +1355,12 @@ class GameManager:
         game.running = False
         if game.thread:
             game.thread.join(timeout=5)
+
+        # Manual stop (e.g. /logout mid-session): the level-loop's own blank
+        # (session-end path in _run_game) only fires on a natural session
+        # end, not a mid-level stop request — blank here too so the floor
+        # doesn't stay lit with whatever was on it when Stop was pressed.
+        _hw_blank_floor(getattr(game, "led_table", None))
 
         final_state = game.get_state()
 
