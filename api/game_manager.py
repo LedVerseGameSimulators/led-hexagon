@@ -281,6 +281,19 @@ def _rgb_is_red(rgb):
     return rgb[0] >= 200 and rgb[1] < 80 and rgb[2] < 30
 
 
+# Memory-mode camouflage / already-checked empties (3 rings each).
+_TEAL_HIDDEN = [[0, 62, 62], [0, 62, 62], [0, 62, 62]]
+_CHECKED_TEAL = [[0, 40, 40], [0, 40, 40], [0, 40, 40]]  # darker: "I already tried this"
+
+
+def _rings_is_camouflage_teal(rings):
+    """True if all three rings match memory camouflage teal."""
+    for ring in _normalize_rings(rings):
+        if list(ring) != _TEAL_HIDDEN[0]:
+            return False
+    return True
+
+
 # Level-progression tiers (dirs under source/, easy->hard). Category is
 # locked by the START level's file type: .led = 1-player, .ledb = 2-player.
 # A 1P session marathons only the 1P tiers and never crosses into 2P.
@@ -524,6 +537,14 @@ class GameInstance:
         self._hint_pressed = set()     # edge-trigger guard: fire once per press,
                                         # not once per frame while held (mirrors
                                         # scored_active's pattern for goal/deduct)
+        # Per-life reveal after a press (memory mode): keep true color on screen
+        # instead of blanking. Cleared on respawn / wave jump / fresh active life.
+        self.revealed_colors = {}      # (i,j) -> 3-ring color to paint
+        self.revealed_live_red = set() # post-hit deduct cells: keep hurting
+        # Full 3-ring colors from the latest classification frame (for reveal paint)
+        self._goal_color_full = None
+        self._goal2_color_full = None
+        self._deduct_color_full = None
 
         # ── SESSION (5-min marathon) state ──────────────────────────────
         # Score + lives persist across levels; session ends on life<=0 or
@@ -580,6 +601,44 @@ class GameInstance:
         self._reveal_until = self._reveal_duration   # fresh level -> initial 5s reveal
         self._reveal2_until = self._reveal_duration  # same, for P2 (2P memory levels)
         self._hint_pressed = set()
+        self.revealed_colors = {}
+        self.revealed_live_red = set()
+        self._goal_color_full = None
+        self._goal2_color_full = None
+        self._deduct_color_full = None
+
+    def _clear_cell_reveal(self, cell):
+        """Drop per-life reveal marks for one coordinate."""
+        self.revealed_colors.pop(cell, None)
+        self.revealed_live_red.discard(cell)
+
+    def _clear_all_reveals(self):
+        """Drop all per-life reveal marks (wave jump / level reset safety)."""
+        self.revealed_colors.clear()
+        self.revealed_live_red.clear()
+
+    def _mark_revealed(self, i, j, color_full, checked_empty=False):
+        """Keep this cell painted for the rest of its current life (memory mode)."""
+        rings = _normalize_rings(color_full if color_full is not None else [0, 0, 0])
+        if checked_empty and _rings_is_camouflage_teal(rings):
+            rings = [c[:] for c in _CHECKED_TEAL]
+        self.revealed_colors[(i, j)] = rings
+
+    def _apply_hazard_penalty(self):
+        """Moving-red-style penalty: both scores in 2P + shared HP, rate-limited."""
+        now = time.time()
+        if now - self.last_life_loss_time < self._life_count_time:
+            return False
+        self.score -= 1
+        if self.score < 0:
+            self.score = 0
+        if self.multiplayer:
+            self.score2 -= 1
+            if self.score2 < 0:
+                self.score2 = 0
+        self.life -= 1
+        self.last_life_loss_time = now
+        return True
 
     def _current_level_time(self) -> float:
         """Level timeline for consume/scoring (Play.total_pass)."""
@@ -604,9 +663,11 @@ class GameInstance:
         """Type-aware scoring for a press on cell (i,j):
           - hint tile (memory mode) -> -5 score (NO life loss), re-reveals
             remaining targets for _reveal_duration seconds
-          - red hazard cell  -> -1 point + -1 HP (HP rate-limited)
-          - goal_led target  -> +1 point + consume (tile blanks) + flash
-          - background decor  -> nothing (neutral)
+          - red hazard cell  -> -1 point + -1 HP (HP rate-limited; both scores in 2P)
+          - memory live deduct (after first hit) -> same hazard penalty, stays revealed
+          - DEDUCT tile -> penalty + consume; memory: reveal + keep hurting
+          - goal_led target -> +1 point + consume; memory: stay revealed (no blank)
+          - blank/decor (memory) -> reveal true/checked color, no score
         goal/red membership is classified per frame in the callback."""
         if total_pass is None:
             total_pass = self._current_level_time()
@@ -644,29 +705,34 @@ class GameInstance:
                         self.score2 = 0
                     self._reveal2_until = total_pass + self._reveal_duration
             return
+        # Memory: post-hit deduct keeps hurting (moving-red style) while pressed.
+        if self._memory_mode and (i, j) in self.revealed_live_red:
+            self._apply_hazard_penalty()
+            return
         # Red hazard: penalty + HP loss (gated). Not edge-limited by
         # scored_active (standing on red keeps hurting, rate-limited by time).
         if (i, j) in self.red_cells:
-            now = time.time()
-            if now - self.last_life_loss_time >= self._life_count_time:
+            self._apply_hazard_penalty()
+            return
+        # DEDUCT tile: penalty then consume (edge-triggered).
+        # Memory: fair 2P (both scores) like moving red, then stay revealed and
+        # keep hurting via revealed_live_red. Non-memory: P1 score only, blank.
+        if (i, j) in self.deduct_cells and (i, j) not in self.scored_active:
+            self.scored_active.add((i, j))
+            if self._memory_mode:
+                self._apply_hazard_penalty()
+                self.revealed_live_red.add((i, j))
+                deduct_paint = self._deduct_color_full or [
+                    [254, 0, 48], [254, 0, 48], [254, 0, 48]
+                ]
+                self._mark_revealed(i, j, deduct_paint)
+                self._consume_cell(i, j, total_pass)
+            else:
                 self.score -= 1
                 if self.score < 0:
                     self.score = 0
-                if self.multiplayer:          # red hurts both players in 2P
-                    self.score2 -= 1
-                    if self.score2 < 0:
-                        self.score2 = 0
                 self.life -= 1
-                self.last_life_loss_time = now
-            return
-        # DEDUCT tile: penalty (-1 score, -1 life) then consume (edge-triggered).
-        if (i, j) in self.deduct_cells and (i, j) not in self.scored_active:
-            self.scored_active.add((i, j))
-            self.score -= 1
-            if self.score < 0:
-                self.score = 0
-            self.life -= 1
-            self._consume_cell(i, j, total_pass)
+                self._consume_cell(i, j, total_pass)
             return
         in_p1 = (i, j) in self.goal_cells
         in_p2 = (i, j) in self.goal2_cells
@@ -680,12 +746,16 @@ class GameInstance:
                     self.score2 += 1
                     self.p2_next_cells.discard((i, j))
                     self._consume_cell(i, j, total_pass)
+                    if self._memory_mode:
+                        self._mark_revealed(i, j, self._goal2_color_full or self._goal_color_full)
             else:
                 if (i, j) not in self.scored_active:
                     self.scored_active.add((i, j))
                     self.score += 1
                     self.p2_next_cells.add((i, j))  # next time → P2
                     self._consume_cell(i, j, total_pass)
+                    if self._memory_mode:
+                        self._mark_revealed(i, j, self._goal_color_full)
             return
 
         # P1 goal: score + consume
@@ -693,19 +763,34 @@ class GameInstance:
             self.scored_active.add((i, j))
             self.score += 1
             self._consume_cell(i, j, total_pass)
+            if self._memory_mode:
+                self._mark_revealed(i, j, self._goal_color_full)
             return
         # P2 goal: separate score + consume
         if in_p2 and (i, j) not in self.scored_active2:
             self.scored_active2.add((i, j))
             self.score2 += 1
             self._consume_cell(i, j, total_pass)
+            if self._memory_mode:
+                self._mark_revealed(i, j, self._goal2_color_full)
             return
-        # else: background decor — neutral, no effect.
+        # Memory: blank / non-scorable colored decor — reveal for this life, no score.
+        if self._memory_mode and (i, j) not in self.revealed_colors:
+            if self.led_table is not None:
+                try:
+                    raw = self.led_table.led_table[i][j]
+                except Exception:
+                    raw = [0, 0, 0]
+            else:
+                raw = [0, 0, 0]
+            self._mark_revealed(i, j, raw, checked_empty=True)
+        # else non-memory: background decor — neutral, no effect.
 
     def _consume_cell(self, i, j, total_pass=None):
-        """Remove a stepped goal tile from the group(s) whose time window is
-        CURRENTLY ACTIVE, so it blanks. 2P (.ledb multiplayer): respawns after
-        respawn_delay. 1P: follows native level timing — groups with
+        """Remove a stepped goal/deduct tile from the group(s) whose time window
+        is CURRENTLY ACTIVE. Non-memory: cell blanks. Memory mode: caller keeps
+        the cell painted via revealed_colors. 2P (.ledb multiplayer): respawns
+        after respawn_delay. 1P: follows native level timing — groups with
         staggered start_times provide natural wave progression; no
         artificial respawn.
 
@@ -741,13 +826,15 @@ class GameInstance:
         self.flashes[(i, j)] = time.time()
 
     def process_respawns(self):
-        """Re-add consumed 2P goal tiles after respawn_delay. Per-frame."""
+        """Re-add consumed 2P goal tiles after respawn_delay. Per-frame.
+        New life starts hidden again — drop any reveal marks for that cell."""
         if not self.pending_respawn:
             return
         now = time.time(); still = []
         for entry in self.pending_respawn:
             g, cell, t = entry
             if now >= t:
+                self._clear_cell_reveal(cell)
                 sm = getattr(g, "start_member", None)
                 try:
                     if isinstance(sm, set): sm.add(cell)
@@ -1023,6 +1110,7 @@ class GameManager:
                         goal_color_full = None   # true 3-ring color (for reveal paint)
                         goal2_color_full = None
                         red_color_full = None    # true 3-ring color (moving hazard, always shown)
+                        deduct_color_full = None
                         gc = game.goal_color
                         gc2 = game.goal2_color
                         for g in dgroup.values():
@@ -1052,6 +1140,7 @@ class GameManager:
                                     continue
                                 if is_deduct:
                                     deduct_cells.add((ci, cj))
+                                    deduct_color_full = deduct_color_full or g.color
                                 elif is_red:
                                     red_cells.add((ci, cj))
                                     red_color_full = red_color_full or g.color
@@ -1075,6 +1164,14 @@ class GameManager:
                         game.goal2_cells = goal2_cells
                         game.red_cells = red_cells
                         game.deduct_cells = deduct_cells
+                        game._goal_color_full = goal_color_full
+                        game._goal2_color_full = goal2_color_full
+                        game._deduct_color_full = deduct_color_full
+                        # Fresh active life at a coord (respawn / new wave) must
+                        # start hidden again — drop any leftover reveal paint.
+                        if game._memory_mode:
+                            for cell in goal_cells | goal2_cells | deduct_cells:
+                                game._clear_cell_reveal(cell)
 
                         # ── LEVEL COMPLETION / WAVE-SKIP ─────────────────────
                         # Unlike hoops/laser/climb/grid, hexagon's scoreable
@@ -1138,6 +1235,8 @@ class GameManager:
                                 logger.debug(f"Auto-jump: {total_pass:.1f}s -> {next_start:.1f}s")
                                 play_self.total_pass = next_start
                                 game.last_life_loss_time = 0.0  # reset hazard gate
+                                if game._memory_mode:
+                                    game._clear_all_reveals()  # no ghost paint into next wave
 
                         # 2) SCORE pressed cells (type-aware). Drop scored marks
                         #    for goals that are no longer active so they can score
@@ -1161,19 +1260,14 @@ class GameManager:
                                        for row in grid for cell in row]
                         cols = led_table.led_col
 
-                        # 2a) MEMORY MODE: unscored targets always show as
-                        # camouflage TEAL (matches decor -- indistinguishable
-                        # from background, this IS the disguised/hidden look)
-                        # except during a reveal window, when they show their
-                        # true bright color. A cell that's already been SCORED
-                        # drops out of goal_cells entirely (consumed/removed
-                        # from its group) and is left alone here -- it just
-                        # renders black via the normal raw paint, same as any
-                        # other emptied cell. Deduct/hazard tiles and the hint
-                        # tile itself are untouched by this block (always
-                        # visible per their own raw color).
+                        # 2a) MEMORY MODE paint order:
+                        #   1) teal-hide unscored targets (or bright during reveal)
+                        #   2) per-life revealed_colors (scored / deduct / checked empty)
+                        #   3) moving red on top (danger always visible)
+                        #   4) hint blink
+                        #   5) white flash (below)
                         if game._memory_mode:
-                            TEAL_HIDDEN = [[0, 62, 62], [0, 62, 62], [0, 62, 62]]
+                            TEAL_HIDDEN = [c[:] for c in _TEAL_HIDDEN]
                             BLACK_OFF = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
                             # Each player has their OWN reveal window (separate
                             # hint presses -- see hint tile block below), not a
@@ -1188,17 +1282,12 @@ class GameManager:
                                 bright2 = _normalize_rings(goal2_color_full) if reveal2_active else TEAL_HIDDEN
                                 for (ci, cj) in goal2_cells:
                                     led_display[ci * cols + cj] = bright2
-                            # Moving RED hazard (continuous, not one-shot deduct):
-                            # always shows its true color, reveal or hidden alike,
-                            # since it's a live danger the player must dodge in
-                            # real time -- not a memorizable static position. Only
-                            # touches CURRENTLY-occupied cells (red_cells is
-                            # rebuilt fresh every frame from the group's live
-                            # position), so once the wave sweeps past, a cell is
-                            # simply no longer in red_cells and is left to render
-                            # whatever it actually is underneath (teal if it's a
-                            # hidden target, decor's own color otherwise) --
-                            # never forced back to any particular color here.
+                            # Spent / checked cells stay painted for this life
+                            # (do not blank after consume).
+                            for (ci, cj), paint in game.revealed_colors.items():
+                                led_display[ci * cols + cj] = [c[:] for c in paint]
+                            # Moving RED hazard on top of reveal paint so a
+                            # sweeping danger is never hidden by a checked cell.
                             if red_cells:
                                 red_paint = _normalize_rings(red_color_full)
                                 for (ci, cj) in red_cells:

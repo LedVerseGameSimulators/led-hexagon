@@ -137,12 +137,20 @@ Separate from the hardware-driver risk above: the YC-tier memory-mode
 mechanic itself (reveal/hide of goal tiles, single shared hint-tile that
 alternates color every 5s in 2P levels to indicate whose turn it is, teal
 placeholder color `[0,62,62]` on all 3 rings while a tile is hidden) was
-built and tested **only in the browser simulator** this session. It has
-never been displayed on a physical hex tile at all — separate from whether
-the ring order or blank-on-stop works, confirm the reveal/hide timing and
-hint-tile alternation are visually legible on the real floor (breath/flash
-effects plus 3-ring color changes can look different at full physical scale
-and viewing distance than in a browser canvas).
+built and tested **only in the browser simulator**. It has never been
+displayed on a physical hex tile at all — separate from whether the ring
+order or blank-on-stop works, confirm the reveal/hide timing and hint-tile
+alternation are visually legible on the real floor (breath/flash effects
+plus 3-ring color changes can look different at full physical scale and
+viewing distance than in a browser canvas).
+
+**Reveal-on-hit (current behavior):** after a press in memory mode, that
+cell stays painted for its current life instead of blanking — scored goals
+keep their true color (no re-score until respawn/new wave), static deduct
+stays red and keeps hurting like moving red (both scores + shared HP in
+2P), and blank/decor get a checked look (darker teal `[0,40,40]` when the
+true color was camouflage teal). Reveal marks clear on respawn, auto-jump
+to the next wave, or a fresh active life at that coordinate.
 
 **Do not modify this mechanic's code during on-site validation** — if it
 doesn't look right, note exactly what's wrong (timing off? teal not
