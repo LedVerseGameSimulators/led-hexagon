@@ -20,17 +20,23 @@
   (outer, mid, inner) — **9 bytes/tile**. `draw_screen_by_com` loops
   `k in range(2, -1, -1)` over the 3 rings internally; do not flatten this
   format anywhere in the pipeline (see `ONSITE.md` "What NOT to touch").
-- **COM ports — discrepancy to resolve on-site:** `ONSITE.md` Step 4/5 and
-  the dev `led_parameter` shelve say **3** COM port entries. The parent
-  `HARDWARE_INTEGRATION_PLAN.md` (Game 5 section) says **4 ports on real
-  hardware**, noting "dev shelve shows 1" for a different field (rows/cols
-  test config, not port count). Treat neither number as ground truth —
-  confirm the actual count on the real floor's `led_parameter` shelve
-  (`games/setting/led_parameter`, key `list_com_info`) during Step 4 of the
-  checklist below, and update this doc with the real count once confirmed.
+- **COM ports — venue confirmed (2026-08-03 onsite):** `list_com_info` in
+  `games/setting/led_parameter` is **`COM9`** (`WCH USB-SERIAL Ch A`), 33
+  tiles, layout type 1. Operator start path: `START_GAME.bat` (ports
+  8004 / 8767 / 5177). See `OPERATOR_GUIDE.md`.
+- **COM ports — historical discrepancy:** older docs (`ONSITE.md` Step 4/5,
+  parent `HARDWARE_INTEGRATION_PLAN.md`) mentioned 3 vs 4 port counts.
+  Treat the venue shelve as ground truth unless wiring changes.
 - **Mechanism:**
   - `USE_SERIAL_HD` env var (`api/game_manager.py`) gates all hardware code
     paths. Default `0` (sim-only); set to `1` to drive the real floor.
+  - **`Setting.USE_SERIAL_HD` gate (dark-floor fix):** `led_control.py`
+    checks `Setting.USE_SERIAL_HD` (class default `False` in
+    `games/model/setting.py`), not the env var alone. When the API starts
+    with `USE_SERIAL_HD=1`, `_hw_init()` forces `Setting.USE_SERIAL_HD =
+    True` before opening COM ports — without this sync the floor stays dark
+    even though the env var is set. `games/test_hardware.py` does the same
+    override for standalone diagnostics.
   - `_hw_init()` — called once per game start when `USE_SERIAL_HD=1`. Reads
     `games/setting/led_parameter` (`list_com_info`, `led_layout_type`,
     `value_high`/`value_width`, `floor_layout_coors_no_use`), calls

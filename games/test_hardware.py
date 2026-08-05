@@ -15,6 +15,7 @@ import shelve
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from led import led_control
+from model.setting import Setting
 
 SHELVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setting', 'led_parameter')
 DEFAULT_ROWS, DEFAULT_COLS = 16, 26
@@ -22,6 +23,8 @@ DEFAULT_ROWS, DEFAULT_COLS = 16, 26
 
 def main():
     print("=== Hexagon Hardware Test ===")
+    # draw_screen_by_com / sensor reads are gated on this flag
+    Setting.USE_SERIAL_HD = True
     print(f"Reading shelve: {SHELVE}")
     db = shelve.open(SHELVE, flag='r')
     list_com_info = db.get('list_com_info', [])
@@ -32,6 +35,7 @@ def main():
     db.close()
     print(f"  COM ports : {list_com_info}")
     print(f"  Grid      : {rows}x{cols}  layout={layout_type}")
+    print(f"  USE_SERIAL_HD: {Setting.USE_SERIAL_HD}")
 
     led_control.init_layout(layout_type, rows, cols, no_use)
     errors = led_control.init_com(list_com_info)

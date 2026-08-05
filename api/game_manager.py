@@ -183,6 +183,10 @@ def _hw_init():
     try:
         import shelve as _s
         from led import led_control as _lc
+        # led_control.draw_screen_by_com is gated on Setting.USE_SERIAL_HD —
+        # force it on when this process was started with USE_SERIAL_HD=1.
+        from model.setting import Setting as _Setting
+        _Setting.USE_SERIAL_HD = True
         db = _s.open(str(GAMES_ROOT / 'setting' / 'led_parameter'), flag='r')
         list_com_info = db.get('list_com_info', [])
         layout_type   = int(db.get('led_layout_type', 0))
