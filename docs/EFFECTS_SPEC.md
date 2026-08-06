@@ -78,13 +78,19 @@ UI countdown and floor stay in sync. Floor shows solid colors only (no digits).
 2. **Countdown** (3 red → 2 blue → 1 green)
 3. **Next level** play begins
 
-Timer expire uses the **same** clear pattern (all green).
+Timer expire uses the **same clear pattern** (all green) — see session end below.
 
-If session ends after final clear → all tiles **black / off** (**no** countdown).
+If more levels remain: clear → stinger → countdown → next level play.
 
 ---
 
-## Level fail
+## Timer expire (= session end)
+
+Same LED treatment as **level clear** (all green).
+
+1. Hold ~2–3 s with transition stinger (not BGM)
+2. All tiles **black / off**
+3. **No countdown** — session is over
 
 **All 33 live hex tiles → solid red** (all 3 rings).
 
@@ -93,12 +99,6 @@ Triggered when **all lives are lost**.
 1. Hold ~2–3 s with transition stinger (not BGM)
 2. **Countdown** (3 red → 2 blue → 1 green)
 3. **Same level** restart play begins
-
----
-
-## Timer expire
-
-Same as **level clear** (all green) → stinger → countdown → next level or session end.
 
 ---
 
