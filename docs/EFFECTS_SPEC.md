@@ -2,8 +2,8 @@
 
 Audio, countdown, and hex-floor behavior for **LED Hexagon / Battle Arena**.
 
-Global rules: [activerse_final_changes/docs/game-effects/GLOBAL_RULES.md](../../docs/game-effects/GLOBAL_RULES.md)
-
+Global rules: [activerse_final_changes/docs/game-effects/GLOBAL_RULES.md](../../docs/game-effects/GLOBAL_RULES.md)  
+Locked decisions: [LOCKED_DECISIONS.md](../../docs/game-effects/LOCKED_DECISIONS.md)  
 Matrix reference: [GRID_MATRICES.md](../../docs/game-effects/GRID_MATRICES.md)
 
 ---
@@ -32,11 +32,27 @@ Row 4: .  .  .  .  .  .  .  .  .
 ```
 
 `.` = live hex tile, `X` = dead (no tile). Odd rows are **staggered** on the
-physical floor.
+physical floor. Rows 2–4 are **fully live** (9 tiles each).
 
 > Some repo docs still mention 16×26 from level-authoring / legacy code paths.
 > **Effects patterns** (countdown, clear, fail) should be designed on this
-> **5×9 hex footprint** with only the **33 live cells** lit.
+> **5×9 hex footprint** with only the **33 live cells** lit (authoritative coords
+> from onsite shelve `games/setting/led_parameter`).
+
+---
+
+## Effect `.led` files (exactly three)
+
+All effect assets live under `games/source/effects/`:
+
+| File | Purpose |
+|------|---------|
+| **`countdown.led`** | One file with **three timed groups** (3→2→1 @ ~0.8 s each) — **not** three separate countdown files |
+| **`level_clear.led`** | Solid green hold (~2.5 s) on all 33 live tiles |
+| **`level_fail.led`** | Solid red hold (~2.5 s) on all 33 live tiles |
+
+Each group covers all 33 live `(row,col)` members; dead cells stay black. All
+three rings per tile use the same RGB (solid outer/mid/inner).
 
 ---
 
@@ -48,7 +64,7 @@ physical floor.
 | **Positive score SFX** | Shared positive MP3 (cross-game) |
 | **Negative score SFX** | Shared negative MP3 (cross-game) |
 | **Countdown** | Tick/noise during 3-2-1; **no BGM** |
-| **Level transition** | Short stinger ~2–3 s (asset TBD / stock OK) |
+| **Level transition** | `games/audio/transition_stinger.mp3` (~2–3 s) — **one shared file** for clear **and** fail |
 
 ---
 
@@ -66,7 +82,9 @@ Tick/noise audio; no BGM. All **33 live hex tiles** lit (all 3 rings same color)
 | **1** | ~0.8 s | **All green** |
 | **Start** | — | Level play begins (BGM on) |
 
-UI countdown and floor stay in sync. Floor shows solid colors only (no digits).
+UI countdown and floor countdown **both run**; keep **approximately in sync**
+(floor from backend `countdown.led`; UI countdown stays). Floor shows solid
+colors only (no digit glyphs).
 
 ---
 
@@ -77,8 +95,6 @@ UI countdown and floor stay in sync. Floor shows solid colors only (no digits).
 1. Hold ~2–3 s with transition stinger (not BGM)
 2. **Countdown** (3 red → 2 blue → 1 green)
 3. **Next level** play begins
-
-Timer expire uses the **same clear pattern** (all green) — see session end below.
 
 If more levels remain: clear → stinger → countdown → next level play.
 
@@ -92,9 +108,17 @@ Same LED treatment as **level clear** (all green).
 2. All tiles **black / off**
 3. **No countdown** — session is over
 
+Also applies when **last level is cleared** with time remaining, or when
+**all lives are lost with ≤10 s session time left** (session end — no fail
+panel, no countdown).
+
+---
+
+## Level fail
+
 **All 33 live hex tiles → solid red** (all 3 rings).
 
-Triggered when **all lives are lost**.
+Triggered when **all lives are lost** and **>10 s session time remains**.
 
 1. Hold ~2–3 s with transition stinger (not BGM)
 2. **Countdown** (3 red → 2 blue → 1 green)

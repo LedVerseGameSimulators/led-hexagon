@@ -44,7 +44,7 @@ Row 4: .  .  .  .  .  .  .  .  .     ← 9 live
 | # | Finding | Plan action |
 |---|---------|-------------|
 | 1 | Prior audit wrongly claimed rows 2–4 ASCII was “empty”; shelve confirms **27 live tiles in rows 2–4** and diagrams are correct | Fixed §1.1; generate `.led` coords from shelve, not hand-copy |
-| 2 | `EFFECTS_SPEC.md` § “Timer expire” runs into **level fail (red)** bullets without a `## Level fail` heading (same doc bug as Grid) | Implementation follows GLOBAL_RULES; note in §1.1; fix heading in H3.2 |
+| 2 | `EFFECTS_SPEC.md` § “Timer expire” ran into level-fail bullets without `## Level fail` | **Fixed** in gap-analysis pass (2026-08-07); see [EFFECTS_SPEC.md](./EFFECTS_SPEC.md) |
 | 3 | `LedTable` 16×26 vs HW 5×9 is real; gameplay coords live in 0–4 × 0–8 so effect `.led` at zone 5×9 is safe for MVP | Keep Phase A (effects on 5×9 zone); Phase B remains follow-up |
 | 4 | `_hw_blank_floor()` builds grid from `led_table.led_row/col` (16×26); HW draw maps via `rect_position_arr` with OOB → black — works today but sim publishes 16×26 | H1.5 must blank via same HW path; optional H2.3 sim footprint |
 | 5 | Script name drift: §2.1 `author_effect_led.py` vs H0.1 `author_hex_effect_leds.py` | Unified to `scripts/author_hex_effect_leds.py` |
@@ -53,6 +53,49 @@ Row 4: .  .  .  .  .  .  .  .  .     ← 9 live
 ### Follow-up (not blocking MVP)
 
 1. **Phase B timing:** migrate `LedTable` + sim to shelve 5×9 after effects MVP validated on HW, or block sim polish until then.
+
+---
+
+## Gap analysis (2026-08-07)
+
+**Verdict:** **Ready** for Phase 0 authoring + Phase 1 backend work — aligned with [LOCKED_DECISIONS.md](../../docs/game-effects/LOCKED_DECISIONS.md), [EFFECTS_SPEC.md](./EFFECTS_SPEC.md), and [GRID_MATRICES.md](../../docs/game-effects/GRID_MATRICES.md) Hex section after fixes in this pass.
+
+### Severity summary
+
+| Severity | Before | Fixed this pass | Remaining |
+|----------|--------|-----------------|-----------|
+| **Blocker** | 0 | — | 0 |
+| **High** | 1 | 1 | 0 |
+| **Medium** | 3 | 2 | 1 |
+| **Low** | 2 | 2 | 0 |
+
+### Gaps found and disposition
+
+| # | Sev | Gap | Disposition |
+|---|-----|-----|-------------|
+| G1 | **High** | `EFFECTS_SPEC.md` — level-fail bullets merged under **Timer expire** (no `## Level fail` heading) | **Fixed** — split sections; session-end edge cases explicit |
+| G2 | **Medium** | `EFFECTS_SPEC.md` — no three-file contract or single `countdown.led` with timed groups | **Fixed** — added § Effect `.led` files |
+| G3 | **Medium** | `EFFECTS_SPEC.md` — missing life=0 ≤10 s and last-level session-end paths | **Fixed** — under **Timer expire** |
+| G4 | **Medium** | [PLAN_REVIEW_CROSS_GAME.md](../../docs/game-effects/PLAN_REVIEW_CROSS_GAME.md) still cites five `hex_countdown_*` files | **Human open** — refresh cross-game review doc (Hex plan is correct) |
+| G5 | **Low** | Stinger listed as TBD vs locked `games/audio/transition_stinger.mp3` | **Fixed** in spec |
+| G6 | **Low** | “Stay in sync” vs locked “approximately in sync” + both UI and floor run | **Fixed** in spec |
+
+### Locked-decision verification (pass)
+
+| Check | Result |
+|-------|--------|
+| Exactly **three** effect files | **Pass** — `countdown.led`, `level_clear.led`, `level_fail.led` |
+| One `countdown.led` with timed groups (not `hex_countdown_3/2/1`) | **Pass** — §2.1, H0.1/H1.3 |
+| Footprint **5×9 / 33 live** from shelve | **Pass** — shelve verified (`value_high=5`, `value_width=9`, 12 dead, 33 live) |
+| GRID_MATRICES Hex ASCII + legend | **Pass** — rows 2–4 fully live; matches shelve |
+| Session flow (life≤10s, last level, timer expire → clear → stinger → black) | **Pass** — § Locked decisions + §2.3 |
+
+### Remaining human opens (not blocking Phase 0)
+
+1. **Cross-game doc refresh** — update `PLAN_REVIEW_CROSS_GAME.md` §1 Hexagon row (still describes five-file / split countdown pattern).
+2. **Phase B footprint** — optional `LedTable` + sim migration from 16×26 logical buffer to shelve-native 5×9 (§2.6).
+3. **Asset drop** — ship `games/audio/transition_stinger.mp3` and wire BGM/score MP3s during Phase 1 (paths locked; files not in repo yet).
+4. **Frontend timing** — align `CountdownScreen` step duration (~1.0 s today) with backend ~0.8 s during implementation (H2.2).
 
 ---
 
@@ -107,7 +150,7 @@ Timer expire OR last level cleared:
 | **`games/test_hardware.py`** | reads shelve (→ **5×9**) but comment says 16×26 | 33 on HW | Correct runtime read; misleading header comment |
 | **`ONSITE.md`, `docs/HARDWARE_MODE.md`, `docs/LEVELS.md`** | document **16×26** full grid + 5×9 zone | — | Stale relative to onsite shelve and effects spec |
 | **`docs/EFFECTS_SPEC.md` + GRID_MATRICES ASCII** | **5×9** bounding | 33 | Footprint **matches shelve** when `.`=live / `X`=dead; rows 2–4 are **fully live** (9 tiles each) |
-| **`docs/EFFECTS_SPEC.md` structure** | — | — | § “Timer expire” merges into level-fail (red) bullets without `## Level fail` — follow GLOBAL_RULES, not broken heading |
+| **`docs/EFFECTS_SPEC.md` structure** | — | — | **Fixed** — separate `## Level fail`; session-end paths documented |
 
 **Authoritative live-cell set** (from shelve, verified 2026-08-07 — use for `.led` authoring):
 
@@ -323,7 +366,7 @@ Effects validation must run on **hardware/sim with 5×9 HW init**, not assume 41
 | ID | Task |
 |----|------|
 | H3.1 | Fix `ONSITE.md`, `HARDWARE_MODE.md`, `LEVELS.md` — 5×9 onsite, 16×26 logical buffer |
-| H3.2 | Fix `EFFECTS_SPEC.md` § heading (`## Level fail` split from timer expire); align `GRID_MATRICES.md` legend note (rows 2–4 = full live bands) |
+| H3.2 | ~~Fix `EFFECTS_SPEC.md` § heading~~ **Done** (2026-08-07 gap pass); optional `GRID_MATRICES.md` legend note (rows 2–4 = full live bands) |
 | H3.3 | Update `SETTINGS.md` audio rows to ✅ when implemented |
 
 ---
