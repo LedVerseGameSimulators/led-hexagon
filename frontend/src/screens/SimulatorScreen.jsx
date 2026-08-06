@@ -160,9 +160,11 @@ export default function SimulatorScreen({ config, onGameEnd }) {
         const data = await response.json()
         if (data.success) {
           const st = data.state
-          // Sound cues on score gain / life loss
-          if (st.score > prevScoreRef.current) playScore()
-          if (prevLifeRef.current !== null && st.life < prevLifeRef.current) playHurt()
+          const backendAudio = st.backend_audio_active === true
+          const inputLive = st.accepting_input === true && st.phase === 'playing'
+          // Sound cues on score gain / life loss (mute when backend audio owns SFX)
+          if (!backendAudio && inputLive && st.score > prevScoreRef.current) playScore()
+          if (!backendAudio && inputLive && prevLifeRef.current !== null && st.life < prevLifeRef.current) playHurt()
           prevScoreRef.current = st.score
           prevLifeRef.current = st.life
 
@@ -261,8 +263,8 @@ export default function SimulatorScreen({ config, onGameEnd }) {
               <div className="hud-meta">
                 <span className="hud-level">Level {currentLevel}</span>
                 <span className="hud-diff">{config.difficulty?.toUpperCase()}</span>
-                <span className={`hud-status ${isOver ? 'ended' : 'playing'}`}>
-                  {isOver ? '● ENDED' : '● PLAYING'}
+                <span className={`hud-status ${isOver ? 'ended' : (gameState?.phase === 'playing' ? 'playing' : gameState?.phase || 'playing')}`}>
+                  {isOver ? '● ENDED' : (gameState?.phase === 'playing' ? '● PLAYING' : `● ${(gameState?.phase || 'playing').toUpperCase()}`)}
                 </span>
               </div>
 

@@ -36,7 +36,7 @@ export default function CountdownScreen({ config, onDone }) {
         beep(523, 180)
         return next
       })
-    }, 1000)
+    }, 800)
     return () => clearInterval(id)
   }, [])
 
