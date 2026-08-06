@@ -54,14 +54,51 @@ physical floor.
 
 ## Countdown (every level start)
 
-**TBD** — design against the 5×9 hex footprint (33 live tiles).
+Runs before **every level** — first level of the session, after level clear,
+and after level fail restart. **Not** repeated when the session has ended.
+
+Tick/noise audio; no BGM. All **33 live hex tiles** lit (all 3 rings same color).
+
+| Step | Duration | Pattern |
+|------|----------|---------|
+| **3** | ~0.8 s (suggested) | **All red** |
+| **2** | ~0.8 s | **All blue** |
+| **1** | ~0.8 s | **All green** |
+| **Start** | — | Level play begins (BGM on) |
+
+UI countdown and floor stay in sync. Floor shows solid colors only (no digits).
 
 ---
 
-## Level clear / fail / timer
+## Level clear
 
-**TBD** — patterns and diagram pending (same global flow as other games:
-transition stinger → countdown → next level or restart; session end → black).
+**All 33 live hex tiles → solid green** (all 3 rings).
+
+1. Hold ~2–3 s with transition stinger (not BGM)
+2. **Countdown** (3 red → 2 blue → 1 green)
+3. **Next level** play begins
+
+Timer expire uses the **same** clear pattern (all green).
+
+If session ends after final clear → all tiles **black / off** (**no** countdown).
+
+---
+
+## Level fail
+
+**All 33 live hex tiles → solid red** (all 3 rings).
+
+Triggered when **all lives are lost**.
+
+1. Hold ~2–3 s with transition stinger (not BGM)
+2. **Countdown** (3 red → 2 blue → 1 green)
+3. **Same level** restart play begins
+
+---
+
+## Timer expire
+
+Same as **level clear** (all green) → stinger → countdown → next level or session end.
 
 ---
 
