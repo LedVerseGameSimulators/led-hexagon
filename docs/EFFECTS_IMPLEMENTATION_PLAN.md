@@ -1,9 +1,59 @@
 # LED Hexagon — effects implementation plan
 
-**Status:** Planning only (no runtime code in this commit)  
+**Status:** Ready for Phase 0 (plan reviewed 2026-08-07)  
 **Spec:** [EFFECTS_SPEC.md](./EFFECTS_SPEC.md)  
 **Global rules:** [GLOBAL_RULES.md](../../docs/game-effects/GLOBAL_RULES.md)  
 **Matrix:** [GRID_MATRICES.md](../../docs/game-effects/GRID_MATRICES.md) (Hex section)
+
+---
+
+## Plan review (2026-08-07)
+
+**Verdict:** **Ready** for Phase 0 authoring + Phase 1 backend work, subject to human decisions below.
+
+### Spot-check: shelve + code (authoritative)
+
+Verified against `games/setting/led_parameter` (shelve) and `api/game_manager.py`:
+
+| Check | Result |
+|-------|--------|
+| `value_high` / `value_width` | **5 / 9** |
+| `led_layout_type` | **1** (hex) |
+| `floor_layout_coors_no_use` | **12** dead cells (see footprint below) |
+| Live tiles | **33** (`list_com_info`: COM9, 33× `normal_led`) |
+| `LedTable` in marathon | **16 × 26** hardcoded (`L966`: `led_row=16, led_col=26`) |
+| `_HW_DEFAULT_ROWS/COLS` | **16 / 26** (fallback when shelve missing) |
+| `_hw_init()` | Reads shelve → **5×9** + `no_use` → `init_layout()` |
+
+**Authoritative footprint** (from shelve `floor_layout_coors_no_use`, not ASCII alone):
+
+```
+Cols:  0  1  2  3  4  5  6  7  8
+Row 0: X  X  X  X  .  X  X  X  X     ← 1 live: (0,4)
+Row 1: .  X  .  X  .  X  .  X  .     ← 5 live: staggered
+Row 2: .  .  .  .  .  .  .  .  .     ← 9 live (full row)
+Row 3: .  .  .  .  .  .  .  .  .     ← 9 live
+Row 4: .  .  .  .  .  .  .  .  .     ← 9 live
+```
+
+`.` = live (33 total), `X` = dead (12 total). Matches `EFFECTS_SPEC.md` and `GRID_MATRICES.md` Hex ASCII **when `.`/`X` legend is read correctly** — rows 2–4 are fully live (all `.`), not empty.
+
+### Top findings (critical review)
+
+| # | Finding | Plan action |
+|---|---------|-------------|
+| 1 | Prior audit wrongly claimed rows 2–4 ASCII was “empty”; shelve confirms **27 live tiles in rows 2–4** and diagrams are correct | Fixed §1.1; generate `.led` coords from shelve, not hand-copy |
+| 2 | `EFFECTS_SPEC.md` § “Timer expire” runs into **level fail (red)** bullets without a `## Level fail` heading (same doc bug as Grid) | Implementation follows GLOBAL_RULES; note in §1.1; fix heading in H3.2 |
+| 3 | `LedTable` 16×26 vs HW 5×9 is real; gameplay coords live in 0–4 × 0–8 so effect `.led` at zone 5×9 is safe for MVP | Keep Phase A (effects on 5×9 zone); Phase B remains follow-up |
+| 4 | `_hw_blank_floor()` builds grid from `led_table.led_row/col` (16×26); HW draw maps via `rect_position_arr` with OOB → black — works today but sim publishes 16×26 | H1.5 must blank via same HW path; optional H2.3 sim footprint |
+| 5 | Script name drift: §2.1 `author_effect_led.py` vs H0.1 `author_hex_effect_leds.py` | Unified to `scripts/author_hex_effect_leds.py` |
+| 6 | Double countdown at session start (frontend `CountdownScreen` + backend 3-2-1) | **Human decision** — recommend backend owns floor; frontend defers or mirrors `phase` |
+
+### Human decisions (before Phase 1 merge)
+
+1. **Session-start countdown owner:** backend-only floor countdown (frontend waits for `phase=playing`) vs keep frontend UI and accept duplicate timing risk.
+2. **Countdown `.led` packaging:** three files (locked default) vs one multi-group file — three files kept unless ops asks for single reload.
+3. **Phase B timing:** migrate `LedTable` + sim to shelve 5×9 after effects MVP validated on HW, or block sim polish until then.
 
 ---
 
@@ -29,17 +79,18 @@
 | **`games/game_play/game_running.py`** | defaults **16 × 26** | — | Mock `LedTable` fallbacks when `led_row/col` omitted |
 | **`games/test_hardware.py`** | reads shelve (→ **5×9**) but comment says 16×26 | 33 on HW | Correct runtime read; misleading header comment |
 | **`ONSITE.md`, `docs/HARDWARE_MODE.md`, `docs/LEVELS.md`** | document **16×26** full grid + 5×9 zone | — | Stale relative to onsite shelve and effects spec |
-| **`docs/EFFECTS_SPEC.md` + GRID_MATRICES ASCII** | **5×9** bounding | 33 | **Rows 2–4 shown empty in ASCII; shelve has rows 2–4 fully live** — diagram is wrong for authoring |
+| **`docs/EFFECTS_SPEC.md` + GRID_MATRICES ASCII** | **5×9** bounding | 33 | Footprint **matches shelve** when `.`=live / `X`=dead; rows 2–4 are **fully live** (9 tiles each) |
+| **`docs/EFFECTS_SPEC.md` structure** | — | — | § “Timer expire” merges into level-fail (red) bullets without `## Level fail` — follow GLOBAL_RULES, not broken heading |
 
-**Authoritative live-cell set** (from shelve, verified 2026-08-07):
+**Authoritative live-cell set** (from shelve, verified 2026-08-07 — use for `.led` authoring):
 
 ```
 (0,4)
 (1,0) (1,2) (1,4) (1,6) (1,8)
-(2,0)…(2,8)  (3,0)…(3,8)  (4,0)…(4,8)   ← 27 tiles; spec diagram omits these
+(2,0)…(2,8)  (3,0)…(3,8)  (4,0)…(4,8)   ← rows 2–4: full 9-wide bands (27 tiles)
 ```
 
-**Effects `.led` files MUST** target only these 33 coordinates inside zone `row 0–5, col 0–9`. Dead cells stay black. Do **not** author on a 16×26 canvas.
+**Effects `.led` files MUST** target only these 33 coordinates inside zone `row 0–5, col 0–9` (`para_key_game`: `row=5`, `col=9`, `zone_* = 0–5 / 0–9`). Dead cells stay black. Do **not** author on a 16×26 canvas. Generate member lists from shelve via `author_hex_effect_leds.py`.
 
 ### 1.2 Marathon / transitions — not implemented
 
@@ -113,7 +164,7 @@ games/source/effects/
 4. **No `goal_led` groups** in effect files (avoid goal-color classifier side effects).
 5. **Optional:** single `hex_countdown_all.led` with 3 timed groups @ t=0, 0.8, 1.6 — still one `Play.running()` call. Prefer **three files** per locked “mini-levels” wording and simpler tuning.
 
-**Authoring tool:** extend `scripts/author_effect_led.py` (new) — reads live coords from `led_parameter` shelve, emits zip+shelve matching existing level format; manual GUI editor is error-prone for 33 coords.
+**Authoring tool:** `scripts/author_hex_effect_leds.py` (H0.1) — reads live coords from `led_parameter` shelve, emits zip+shelve matching existing level format; manual GUI editor is error-prone for 33 coords.
 
 ### 2.2 Runtime: `EffectRunner` in `game_manager.py`
 
@@ -187,11 +238,11 @@ SESSION END (timeout | out of life w/ ≤10s | chain done | manual stop)
 
 ### 2.6 Grid dimension strategy (effects vs gameplay buffer)
 
-**Recommendation (minimal risk, two phases):**
+**Decision: author effect `.led` files at native 5×9 zone** (unlike Grid’s 16×26). Hex onsite shelve is 5×9; all 33 live coords fit in rows 0–4, cols 0–8.
 
 | Phase | Change |
 |-------|--------|
-| **A (effects)** | Keep `LedTable` 16×26 for gameplay compatibility; effect `.led` files use zone 5×9 and only paint 33 cells; `_effect_frame_callback` zeros dead cells each frame. HW init already uses shelve 5×9. |
+| **A (effects MVP)** | Keep `LedTable` 16×26 for gameplay compatibility; effect `.led` files use `para_key_game` zone 5×9 and paint only 33 shelve live cells; `_effect_frame_callback` zeros dead cells in zone each frame. HW init already uses shelve 5×9. `_hw_blank_floor` OOB-safe via `rect_position_arr` bounds. |
 | **B (follow-up)** | Read `value_high/value_width` from shelve for `LedTable` + simulator `grid_rows/cols`; update docs/sim canvas. **Out of scope for effects MVP** unless sim/HW mismatch blocks validation. |
 
 Effects validation must run on **hardware/sim with 5×9 HW init**, not assume 416 tiles.
@@ -233,7 +284,7 @@ Effects validation must run on **hardware/sim with 5×9 HW init**, not assume 41
 | ID | Task |
 |----|------|
 | H3.1 | Fix `ONSITE.md`, `HARDWARE_MODE.md`, `LEVELS.md` — 5×9 onsite, 16×26 logical buffer |
-| H3.2 | Fix ASCII footprint in `EFFECTS_SPEC.md` / `GRID_MATRICES.md` rows 2–4 |
+| H3.2 | Fix `EFFECTS_SPEC.md` § heading (`## Level fail` split from timer expire); align `GRID_MATRICES.md` legend note (rows 2–4 = full live bands) |
 | H3.3 | Update `SETTINGS.md` audio rows to ✅ when implemented |
 
 ---
@@ -243,7 +294,7 @@ Effects validation must run on **hardware/sim with 5×9 HW init**, not assume 41
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | **16×26 buffer vs 5×9 HW** | Effect cells off-zone or wrong HW mapping | Author only 33 shelve coords; HW init from shelve; test on HW early |
-| **Wrong footprint diagram** | Effect `.led` missing 27 tiles | Generate coords from shelve, not ASCII art |
+| **Wrong footprint diagram** | Effect `.led` missing tiles | Generate coords from shelve (`author_hex_effect_leds.py`); do not hand-copy ASCII |
 | **Double countdown** (frontend + backend) | 6+ s pre-start | Single owner: backend for floor; frontend listens or skips first |
 | **Scoring during effect play** | Ghost score/life changes | Effect callback skips input/scoring; ignore `/game-input` while `phase != playing` |
 | **pygame mock in tests** | Silent CI | Default mock; `ENABLE_AUDIO=0`; separate smoke with audio flag |
