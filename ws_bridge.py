@@ -170,13 +170,18 @@ async def websocket_endpoint(ws: WebSocket):
                 try:
                     data = json.loads(msg)
                     if data.get("type") in ("press", "release"):
-                        # Forward to API game-input endpoint
+                        target_gid = (
+                            data.get("game_id")
+                            or client_game_id
+                            or bridge.current_game_id
+                        )
                         await client.post(
                             f"{API_BASE_URL}/game-input",
                             json={
                                 "row": data.get("row"),
                                 "col": data.get("col"),
                                 "type": data["type"],
+                                "game_id": target_gid,
                             },
                             timeout=2,
                         )

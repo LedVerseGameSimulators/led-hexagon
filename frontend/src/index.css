@@ -652,6 +652,96 @@ button:disabled {
   margin-top: 8px;
 }
 
+/* ── Backend-driven phase overlays (countdown / clear / fail) ─────── */
+.phase-countdown-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  background: rgba(7, 7, 13, 0.62);
+  backdrop-filter: blur(4px);
+}
+
+.phase-countdown-digit {
+  font-size: clamp(6rem, 22vw, 12rem);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 80px currentColor;
+}
+
+.phase-countdown-level {
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.phase-countdown-overlay.step-3 .phase-countdown-digit {
+  color: #ff4d6a;
+}
+
+.phase-countdown-overlay.step-2 .phase-countdown-digit {
+  color: #4dabf7;
+}
+
+.phase-countdown-overlay.step-1 .phase-countdown-digit {
+  color: #51cf66;
+}
+
+.phase-countdown-overlay.step-pending .phase-countdown-digit {
+  color: var(--text-muted);
+}
+
+.phase-transition-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(7, 7, 13, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.level-clear-overlay {
+  color: var(--color-success);
+  text-shadow: 0 0 40px rgba(81, 207, 102, 0.45);
+}
+
+.level-fail-overlay {
+  color: var(--color-error);
+  text-shadow: 0 0 40px rgba(255, 77, 106, 0.45);
+}
+
+.play-hud--locked {
+  pointer-events: none;
+}
+
+.sim-input-lock {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(18, 18, 28, 0.92);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
 /* ── Play HUD overlay inside stable stage ──────────────────────────── */
 .play-hud {
   position: absolute;

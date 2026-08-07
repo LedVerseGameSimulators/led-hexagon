@@ -458,10 +458,36 @@ def _effect_board_time(dict_group) -> float:
         return 0.05
 
 
+_COUNTDOWN_STEP_SEC = 0.8
+
+
+def _phase_step_from_pass(total_pass: float) -> Optional[int]:
+    """Map countdown.led timeline to UI sync steps (3→2→1, ~0.8 s each). No GO."""
+    if total_pass < _COUNTDOWN_STEP_SEC:
+        return 3
+    if total_pass < 2 * _COUNTDOWN_STEP_SEC:
+        return 2
+    if total_pass < 3 * _COUNTDOWN_STEP_SEC:
+        return 1
+    return None
+
+
+def _phase_remaining_ms(total_pass: float, step: Optional[int]) -> Optional[int]:
+    if step is None:
+        return None
+    beat_start = (3 - step) * _COUNTDOWN_STEP_SEC
+    return int(max(0.0, (_COUNTDOWN_STEP_SEC - (total_pass - beat_start)) * 1000))
+
+
 def _set_phase(game, phase: str, accepting_input: bool) -> None:
     game.phase = phase
     game.accepting_input = accepting_input
-    game.update_state(phase=phase, accepting_input=accepting_input)
+    kwargs = dict(phase=phase, accepting_input=accepting_input)
+    if phase != "countdown":
+        kwargs["phase_step"] = None
+        kwargs["countdown_step"] = None
+        kwargs["phase_remaining_ms"] = None
+    game.update_state(**kwargs)
 
 
 class HeadlessGameGUI:
@@ -621,6 +647,9 @@ class GameInstance:
             "started_at": "",
             "phase": "idle",
             "accepting_input": False,
+            "phase_step": None,
+            "countdown_step": None,
+            "phase_remaining_ms": None,
             "backend_audio_active": False,
         }
         self.thread = None
@@ -1411,6 +1440,18 @@ class GameManager:
                             levels_cleared=game.levels_cleared,
                             phase=game.phase,
                             accepting_input=game.accepting_input,
+                            phase_step=(
+                                game.current_state.get("phase_step")
+                                if game.phase == "countdown" else None
+                            ),
+                            countdown_step=(
+                                game.current_state.get("countdown_step")
+                                if game.phase == "countdown" else None
+                            ),
+                            phase_remaining_ms=(
+                                game.current_state.get("phase_remaining_ms")
+                                if game.phase == "countdown" else None
+                            ),
                             backend_audio_active=getattr(
                                 getattr(game, "_audio", None), "active", False
                             ),
@@ -1513,6 +1554,11 @@ class GameManager:
                             time.time() - game.session_start
                             if game.session_start else 0.0
                         )
+                        step = None
+                        remaining_ms = None
+                        if phase_name == "countdown":
+                            step = _phase_step_from_pass(total_pass)
+                            remaining_ms = _phase_remaining_ms(total_pass, step)
                         game.update_state(
                             score=game.score,
                             score2=game.score2,
@@ -1531,6 +1577,9 @@ class GameManager:
                             levels_cleared=game.levels_cleared,
                             phase=phase_name,
                             accepting_input=False,
+                            phase_step=step,
+                            countdown_step=step,
+                            phase_remaining_ms=remaining_ms,
                             backend_audio_active=audio.active,
                         )
                         time.sleep(0.01)

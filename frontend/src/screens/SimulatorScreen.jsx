@@ -2,6 +2,23 @@ import { useEffect, useState, useRef } from 'react'
 
 import { API_URL, WS_BRIDGE_URL } from '../config'
 
+function countdownDisplay(state) {
+  if (!state || state.phase !== 'countdown') return null
+  const step = state.phase_step ?? state.countdown_step
+  if (step == null) return ''
+  return String(step)
+}
+
+function isInputBlocked(state) {
+  if (!state) return true
+  if (state.accepting_input === false) return true
+  return state.phase && state.phase !== 'playing'
+}
+
+function showPhaseOverlay(state) {
+  return ['countdown', 'level_clear', 'level_fail'].includes(state?.phase)
+}
+
 function HeartRow({ life, maxLife }) {
   // Cap visual hearts (backend display_max is typically 5)
   const total = Math.max(1, Math.min(10, Math.round(maxLife) || 5))
@@ -212,6 +229,10 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const life = gameState?.display_lives ?? gameState?.life ?? gameState?.max_life ?? 0
   const maxLife = gameState?.display_max ?? gameState?.max_life ?? 5
   const isOver = gameState?.game_over
+  const phase = gameState?.phase || (isOver ? 'session_end' : 'playing')
+  const inputLocked = isInputBlocked(gameState)
+  const countdownLabel = countdownDisplay(gameState)
+  const phaseOverlay = showPhaseOverlay(gameState) && !isOver
   const isMulti = !!(gameState?.multiplayer || config.playerCount === 2)
   const p1Name = config.playerName || 'Player 1'
   const p2Name = config.playerName2 || 'Player 2'
@@ -253,18 +274,40 @@ export default function SimulatorScreen({ config, onGameEnd }) {
         <iframe
           ref={iframeRef}
           className={`simulator-iframe ${showSim ? '' : 'simulator-iframe--hidden'}`}
-          src={WS_BRIDGE_URL}
+          src={gameId ? `${WS_BRIDGE_URL}?game_id=${gameId}` : WS_BRIDGE_URL}
           title="Game Simulator"
         />
 
+        {phaseOverlay && gameState?.phase === 'countdown' && (
+          <div
+            className={`phase-countdown-overlay step-${countdownLabel || 'pending'}`}
+            aria-live="polite"
+          >
+            <div className="phase-countdown-digit">{countdownLabel || '…'}</div>
+            <div className="phase-countdown-level">Level {currentLevel}</div>
+          </div>
+        )}
+
+        {phaseOverlay && gameState?.phase === 'level_clear' && (
+          <div className="phase-transition-overlay level-clear-overlay" aria-live="polite">
+            Level clear!
+          </div>
+        )}
+
+        {phaseOverlay && gameState?.phase === 'level_fail' && (
+          <div className="phase-transition-overlay level-fail-overlay" aria-live="polite">
+            Try again!
+          </div>
+        )}
+
         {!showSim && (
-          <div className="play-hud">
+          <div className={`play-hud ${inputLocked ? 'play-hud--locked' : ''}`}>
             <div className="hud-board">
               <div className="hud-meta">
                 <span className="hud-level">Level {currentLevel}</span>
                 <span className="hud-diff">{config.difficulty?.toUpperCase()}</span>
-                <span className={`hud-status ${isOver ? 'ended' : (gameState?.phase === 'playing' ? 'playing' : gameState?.phase || 'playing')}`}>
-                  {isOver ? '● ENDED' : (gameState?.phase === 'playing' ? '● PLAYING' : `● ${(gameState?.phase || 'playing').toUpperCase()}`)}
+                <span className={`hud-status ${isOver ? 'ended' : phase === 'playing' ? 'playing' : 'transition'}`}>
+                  {isOver ? '● ENDED' : phase === 'playing' ? '● PLAYING' : `● ${String(phase).toUpperCase()}`}
                 </span>
               </div>
 
@@ -340,6 +383,12 @@ export default function SimulatorScreen({ config, onGameEnd }) {
                 : ''}
             </span>
           )}
+        </div>
+      )}
+
+      {showSim && inputLocked && !isOver && (
+        <div className="sim-input-lock" aria-hidden="true">
+          Input paused ({phase})
         </div>
       )}
 
