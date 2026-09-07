@@ -48,5 +48,6 @@ def test_audio_manager_no_wait_loops_when_enabled(monkeypatch):
 
     audio.play_stinger()
     audio.play_score_sfx()
+    audio._queue.join()
     fake_mixer.Sound.return_value.play.assert_called()
     assert not fake_music.wait.called
