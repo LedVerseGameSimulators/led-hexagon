@@ -1,7 +1,6 @@
 @echo off
 REM ============================================================
 REM  LED Hexagon - ONE-CLICK START (studio operator)
-REM  Double-click this file. Do not edit unless asked by tech.
 REM ============================================================
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
@@ -20,20 +19,17 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 where python >nul 2>&1
 if errorlevel 1 (
-  echo  ERROR: Python was not found.
-  echo  Ask tech to install Python 3.11+ and add it to PATH.
-  goto :fail
+  if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+    set "PATH=%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts;%PATH%"
+  ) else (
+    echo  ERROR: Python was not found. Ask tech to run SETUP_FIRST_TIME.bat
+    goto :fail
+  )
 )
 
-where node >nul 2>&1
-if errorlevel 1 (
-  echo  ERROR: Node.js was not found.
-  echo  Ask tech to install Node.js LTS from https://nodejs.org
-  goto :fail
-)
 where npm >nul 2>&1
 if errorlevel 1 (
-  echo  ERROR: npm was not found. Reinstall Node.js LTS.
+  echo  ERROR: npm was not found. Ask tech to run SETUP_FIRST_TIME.bat
   goto :fail
 )
 
@@ -43,30 +39,40 @@ goto :after_settings
 :copy_settings
 if not exist "D:\ledhexagonv010109\ledhexagon\setting\led_parameter.dat" (
   echo  ERROR: Floor settings missing: games\setting\led_parameter
-  echo  Ask tech to copy the setting folder from the original game install.
   goto :fail
 )
 echo  Copying floor settings from D drive...
 if not exist "%ROOT%\games\setting" mkdir "%ROOT%\games\setting"
 copy /Y "D:\ledhexagonv010109\ledhexagon\setting\*" "%ROOT%\games\setting" >nul
-if errorlevel 1 (
-  echo  ERROR: Could not copy floor settings.
-  goto :fail
-)
+if errorlevel 1 goto :fail
 
 :after_settings
+echo  Checking Python packages...
+python -c "import fastapi, uvicorn, httpx, serial" >nul 2>&1
+if errorlevel 1 (
+  echo  Installing Python packages (first time)...
+  python -m pip install -r "%ROOT%\api\requirements.txt"
+  if errorlevel 1 goto :fail
+)
+
 if exist "%ROOT%\frontend\node_modules" goto :after_npm
-echo  First run: installing UI packages (may take a minute)...
+echo  First run: installing UI packages...
 pushd "%ROOT%\frontend"
 call npm install
 if errorlevel 1 (
-  echo  ERROR: npm install failed.
   popd
   goto :fail
 )
 popd
 
 :after_npm
+if not exist "%ROOT%\frontend\.env" (
+  if exist "%ROOT%\frontend\.env.example" (
+    copy /Y "%ROOT%\frontend\.env.example" "%ROOT%\frontend\.env" >nul
+    echo  Created frontend\.env — confirm RFID IP if needed.
+  )
+)
+
 if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
 
 echo  Stopping any previous game session...
@@ -84,7 +90,7 @@ ping -n 3 127.0.0.1 >nul
 echo  Starting game UI...
 start "LED Hexagon UI" cmd /k "cd /d %ROOT%\frontend && set PATH=C:\Program Files\nodejs;%PATH%&& npm run dev"
 echo.
-echo  Waiting for the UI to become ready...
+echo  Waiting for the UI...
 
 set /a _tries=0
 :waitui
@@ -108,15 +114,12 @@ echo   LED Hexagon is running
 echo   Open:  http://localhost:5177
 echo  ========================================
 echo.
-echo  When finished, double-click STOP_GAME.bat
-echo.
 start "" "http://localhost:5177/"
 ping -n 3 127.0.0.1 >nul
 exit /b 0
 
 :fail
 echo.
-echo  Start failed. See messages above, then ask tech for help.
-echo.
+echo  Start failed. See OPERATOR_GUIDE.md or run SETUP_FIRST_TIME.bat
 pause
 exit /b 1
