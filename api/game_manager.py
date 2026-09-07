@@ -208,6 +208,28 @@ def _hw_init():
     return _hw_led_control
 
 
+def _hw_read_sensors(layout_type, state_table):
+    """Read floor sensors (fast). Caller must hold _hw_serial_lock."""
+    if _hw_led_control is None:
+        return
+    _hw_led_control.update_screen_state_by_com(layout_type, state_table, state_table)
+
+
+def _read_hardware_snapshot(led_table, read_sensors):
+    """Read into an isolated snapshot; failures return an all-released grid."""
+    snapshot = [
+        [False] * led_table.led_col for _ in range(led_table.led_row)
+    ]
+    try:
+        read_sensors(snapshot)
+    except Exception as error:
+        logger.warning(f"HW read failed: {error}")
+        snapshot = [
+            [False] * led_table.led_col for _ in range(led_table.led_row)
+        ]
+    return snapshot
+
+
 def _hw_blank_floor(led_table):
     """Send one all-black frame (all 3 rings) to the physical floor.
 
@@ -548,6 +570,8 @@ class GameInstance:
         # Cells in this set score P2 next; others score P1.
         self.p2_next_cells = set()
         self.input_lock = threading.Lock()  # guards state_table writes
+        self._sim_pressed = set()  # simulator clicks (not wiped by HW sensor read)
+        self._suppress_until_release = set()  # baseline-held cells blocked until release
         self.phase = "idle"
         self.accepting_input = False
         self.running = False
@@ -678,6 +702,142 @@ class GameInstance:
         self._goal2_color_full = None
         self._deduct_color_full = None
 
+    def _cell_pressed(self, row: int, col: int) -> bool:
+        if self.led_table is None:
+            return False
+        return bool(self.led_table.state_table[row][col]) or (row, col) in self._sim_pressed
+
+    def _refresh_suppress_until_release(self) -> None:
+        for row, col in list(self._suppress_until_release):
+            if not self._cell_pressed(row, col):
+                self._suppress_until_release.discard((row, col))
+
+    def _capture_baseline_suppress(self) -> set:
+        held = set()
+        if self.led_table is None:
+            return held
+        for row in range(self.led_table.led_row):
+            for col in range(self.led_table.led_col):
+                if self._cell_pressed(row, col):
+                    held.add((row, col))
+        return held
+
+    def begin_level_transition(self):
+        """Fail closed while level geometry and classification are changing."""
+        with self.input_lock:
+            self.accepting_input = False
+            if self.led_table is not None:
+                for row in self.led_table.state_table:
+                    for col_index in range(len(row)):
+                        row[col_index] = 0
+            self._sim_pressed.clear()
+            self._suppress_until_release.clear()
+            self._hint_pressed.clear()
+            self.goal_cells = set()
+            self.goal2_cells = set()
+            self.red_cells = set()
+            self.deduct_cells = set()
+            self.hint_cells = set()
+            self.scored_active = set()
+            self.scored_active2 = set()
+            self.current_state["accepting_input"] = False
+
+    def finish_level_transition(self):
+        """Enable input only after the prepared level is installed."""
+        with self.input_lock:
+            if not (self.running and not self.current_state.get("game_over")):
+                return
+            if USE_SERIAL_HD and _hw_led_control is not None and self.led_table is not None:
+                with _hw_serial_lock:
+                    snapshot = _read_hardware_snapshot(
+                        self.led_table,
+                        lambda state: _hw_read_sensors(_hw_layout_type, state),
+                    )
+                for row_index, source_row in enumerate(snapshot):
+                    target_row = self.led_table.state_table[row_index]
+                    for col_index, pressed in enumerate(source_row):
+                        target_row[col_index] = 1 if pressed else 0
+            self._suppress_until_release = self._capture_baseline_suppress()
+            self.accepting_input = True
+            self.phase = "playing"
+            self.current_state["accepting_input"] = True
+            self.current_state["phase"] = "playing"
+            self.current_state["phase_step"] = None
+            self.current_state["countdown_step"] = None
+            self.current_state["phase_remaining_ms"] = None
+
+    def process_frame_input(
+        self,
+        *,
+        goal_cells,
+        goal2_cells,
+        red_cells,
+        deduct_cells,
+        hint_cells=None,
+        hardware_state=None,
+    ):
+        """Atomically publish frame input/classification and score pressed cells."""
+        with self.input_lock:
+            if not self.accepting_input:
+                return False
+
+            self.goal_cells = set(goal_cells)
+            self.goal2_cells = set(goal2_cells)
+            self.red_cells = set(red_cells)
+            self.deduct_cells = set(deduct_cells)
+            if hint_cells is not None:
+                self.hint_cells = set(hint_cells)
+
+            if hardware_state is not None:
+                if len(hardware_state) != self.led_table.led_row or any(
+                    len(row) != self.led_table.led_col for row in hardware_state
+                ):
+                    raise ValueError("hardware state dimensions do not match LED table")
+                for row_index, source_row in enumerate(hardware_state):
+                    target_row = self.led_table.state_table[row_index]
+                    for col_index, pressed in enumerate(source_row):
+                        target_row[col_index] = 1 if pressed else 0
+
+            self._refresh_suppress_until_release()
+
+            if self.multiplayer:
+                self.process_respawns()
+            active_consumables = goal_cells | goal2_cells | deduct_cells
+            self.scored_active &= active_consumables
+            self.scored_active2 &= goal2_cells
+            for row in range(self.led_table.led_row):
+                for col in range(self.led_table.led_col):
+                    if not self._cell_pressed(row, col):
+                        continue
+                    if (row, col) in self._suppress_until_release:
+                        continue
+                    self.try_score_cell(row, col)
+            return True
+
+    def mark_session_failed(self, reason, error):
+        """Record a terminal session error and prevent success resolution."""
+        self.begin_level_transition()
+        self._session_over = True
+        self._end_reason = reason
+        self.update_state(
+            game_over=True,
+            game_over_reason=reason,
+            result=0,
+            accepting_input=False,
+        )
+
+    def refill_life_for_restart(self):
+        """Refill and publish HP immediately while the replay is prepared."""
+        self.begin_level_transition()
+        self.life = self.max_life
+        self.last_life_loss_time = 0.0
+        self.update_state(
+            life=self.life,
+            display_lives=5,
+            current_level=self.current_level_id,
+            accepting_input=False,
+        )
+
     def _clear_cell_reveal(self, cell):
         """Drop per-life reveal marks for one coordinate."""
         self.revealed_colors.pop(cell, None)
@@ -743,6 +903,8 @@ class GameInstance:
           - goal_led target -> +1 point + consume; memory: stay revealed (no blank)
           - blank/decor (memory) -> reveal true/checked color, no score
         goal/red membership is classified per frame in the callback."""
+        if not self.accepting_input:
+            return
         if total_pass is None:
             total_pass = self._current_level_time()
         # Memory-mode hint tile: distinct from goal/red/deduct, checked first.
@@ -923,9 +1085,7 @@ class GameInstance:
         self.pending_respawn = still
 
     def apply_input(self, row: int, col: int, action: str):
-        """Player input from simulator: press/release a tile.
-        Press scores immediately if the tile is lit (mouse clicks are
-        instantaneous, so we can't wait for the next frame)."""
+        """Record simulator press/release state for the game thread to score."""
         if not self.accepting_input:
             return False
         if self.led_table is None:
@@ -935,13 +1095,55 @@ class GameInstance:
         if z and not (z[0] <= row < z[1] and z[2] <= col < z[3]):
             return False
         with self.input_lock:
+            if not self.accepting_input:
+                return False
             if action == "press":
+                self._sim_pressed.add((row, col))
                 self.led_table.press_cell(row, col)
-                self.try_score_cell(row, col)  # score on press (instant clicks)
             elif action == "release":
+                self._sim_pressed.discard((row, col))
                 self.led_table.release_cell(row, col)
-                self._hint_pressed.discard((row, col))  # allow this hint to fire again
+                self._suppress_until_release.discard((row, col))
+                self._hint_pressed.discard((row, col))
         return True
+
+
+class LevelAttemptPreparationError(ValueError):
+    """A level attempt could not be loaded and prepared safely."""
+
+
+def _run_level_attempt(
+    path,
+    *,
+    led_table,
+    level_id,
+    setup_consumer,
+    play_consumer,
+    transition_consumer=None,
+    ready_consumer=None,
+    failure_consumer=None,
+):
+    """Load and prepare one fresh attempt before invoking runtime consumers."""
+    if transition_consumer is not None:
+        transition_consumer()
+    groups, game = _load_level_file(path)
+    if not groups:
+        error = LevelAttemptPreparationError(
+            f"Level {level_id} failed to load for attempt"
+        )
+        if failure_consumer is not None:
+            failure_consumer(error)
+        raise error
+
+    setup_consumer(groups, game)
+    if ready_consumer is not None:
+        ready_consumer()
+    try:
+        play_consumer(groups)
+    finally:
+        if transition_consumer is not None:
+            transition_consumer()
+    return groups, game
 
 
 class GameManager:
@@ -958,6 +1160,7 @@ class GameManager:
         """Stop and remove all existing games. Joins threads (3s timeout) before clearing."""
         with self.lock:
             for gid, g in list(self.games.items()):
+                g.begin_level_transition()
                 g.running = False
             threads = [(gid, g.thread) for gid, g in self.games.items() if getattr(g, "thread", None)]
             # Capture led_table refs before self.games.clear() drops them —
@@ -1147,7 +1350,6 @@ class GameManager:
                             return False
 
                         grid = led_table.led_table
-                        state = led_table.state_table
 
                         # 1) Determine goal colors from indicators.
                         #    goal_led  = P1; goal2_led = P2 (multiplayer only).
@@ -1239,10 +1441,6 @@ class GameManager:
                                 elif is_goal2:
                                     goal2_cells.add((ci, cj))
                                     goal2_color_full = goal2_color_full or g.color
-                        game.goal_cells = goal_cells
-                        game.goal2_cells = goal2_cells
-                        game.red_cells = red_cells
-                        game.deduct_cells = deduct_cells
                         game._goal_color_full = goal_color_full
                         game._goal2_color_full = goal2_color_full
                         game._deduct_color_full = deduct_color_full
@@ -1317,22 +1515,24 @@ class GameManager:
                                 if game._memory_mode:
                                     game._clear_all_reveals()  # no ghost paint into next wave
 
-                        # 2) SCORE pressed cells (type-aware). Drop scored marks
-                        #    for goals that are no longer active so they can score
-                        #    again if they reappear.
-                        with game.input_lock:
-                            if game.multiplayer:
-                                game.process_respawns()
-                            # Keep scored marks for ACTIVE goal/deduct cells only.
-                            # Deduct cells must stay in scored_active while pressed
-                            # or they fire every single frame (life drain per frame).
-                            active_consumables = goal_cells | goal2_cells | deduct_cells
-                            game.scored_active &= active_consumables
-                            game.scored_active2 &= goal2_cells
-                            for i in range(led_table.led_row):
-                                for j in range(led_table.led_col):
-                                    if state[i][j]:
-                                        game.try_score_cell(i, j)
+                        hardware_state = None
+                        if USE_SERIAL_HD and _hw_led_control is not None:
+                            with _hw_serial_lock:
+                                hardware_state = _read_hardware_snapshot(
+                                    led_table,
+                                    lambda snapshot: _hw_read_sensors(
+                                        _hw_layout_type, snapshot
+                                    ),
+                                )
+
+                        game.process_frame_input(
+                            goal_cells=goal_cells,
+                            goal2_cells=goal2_cells,
+                            red_cells=red_cells,
+                            deduct_cells=deduct_cells,
+                            hint_cells=hint_cells,
+                            hardware_state=hardware_state,
+                        )
 
                         # 2) Build display buffer from led_table (3 rings per cell).
                         led_display = [_normalize_rings(cell)
@@ -1415,7 +1615,6 @@ class GameManager:
                                     _hw_led_control.draw_screen_by_com(_hw_layout_type, _ld2)
                                     game._hw_last_draw = _now
                                     game._hw_draw_count = getattr(game, "_hw_draw_count", 0) + 1
-                                    _hw_led_control.update_screen_state_by_com(_hw_layout_type, led_table.state_table, led_table.state_table)
                                 except Exception as _hw_err:
                                     logger.warning(f"HW I/O: {_hw_err}")
 
@@ -1603,6 +1802,7 @@ class GameManager:
                     if session_end_handled["done"]:
                         return
                     session_end_handled["done"] = True
+                    game.begin_level_transition()
                     audio.stop_bgm()
                     _run_clear_hold()
                     _hw_blank_floor(led_table)
@@ -1657,30 +1857,41 @@ class GameManager:
                             game._end_reason = "timeout"
                             break
 
+                        def _setup_attempt(dg, go):
+                            game.current_level_id = lvl_id
+                            game.reset_for_level()
+                            _setup_level(dg, go, lvl_path)
+                            session_elapsed = time.time() - game.session_start
+                            logger.info(
+                                f"▶ Level {lvl_id}: groups={len(dg)}, "
+                                f"mp={game.multiplayer}, board_time={game.board_time_sec}s, "
+                                f"score={game.score}, life={game.life}, "
+                                f"t_left={game.game_time_sec - session_elapsed:.0f}s"
+                            )
+
+                        def _play_attempt(dg):
+                            play.callback = _frame_callback
+                            play.running_state = True
+                            play.total_pass = 0
+                            play.running(dg)
+
                         _run_countdown()
                         audio.start_bgm()
-                        _set_phase(game, "playing", True)
-
-                        dg, go = _load_level_file(lvl_path)
-                        if not dg:
-                            logger.warning(f"Level {lvl_id} failed to reload; aborting level")
-                            break
-                        game.current_level_id = lvl_id
-                        game.reset_for_level()
-                        _setup_level(dg, go, lvl_path)
-                        session_elapsed = time.time() - game.session_start
-                        logger.info(
-                            f"▶ Level {lvl_id}: groups={len(dg)}, "
-                            f"mp={game.multiplayer}, board_time={game.board_time_sec}s, "
-                            f"score={game.score}, life={game.life}, "
-                            f"t_left={game.game_time_sec - session_elapsed:.0f}s"
-                        )
-
-                        play.callback = _frame_callback
-                        play.running_state = True
-                        play.total_pass = 0
                         try:
-                            play.running(dg)
+                            _run_level_attempt(
+                                lvl_path,
+                                led_table=led_table,
+                                level_id=lvl_id,
+                                setup_consumer=_setup_attempt,
+                                play_consumer=_play_attempt,
+                                transition_consumer=game.begin_level_transition,
+                                ready_consumer=game.finish_level_transition,
+                            )
+                        except LevelAttemptPreparationError as prepare_err:
+                            logger.warning(
+                                f"Level {lvl_id} failed to reload: {prepare_err}"
+                            )
+                            break
                         except Exception as run_err:
                             import traceback
                             logger.warning(
@@ -1699,8 +1910,7 @@ class GameManager:
                         if game._restart_level:
                             game._restart_level = False
                             _run_fail_hold()
-                            game.life = game.max_life
-                            game.last_life_loss_time = 0.0
+                            game.refill_life_for_restart()
                             logger.info(
                                 f"↻ Life restart: level={lvl_id}, score={game.score}"
                             )
@@ -1764,7 +1974,6 @@ class GameManager:
                 )
 
         game.running = True   # set synchronously — clear_all() won't skip this thread
-        game._sim_pressed = set()
         game.thread = threading.Thread(target=_run_game, daemon=True)
         game.thread.start()
 
@@ -1774,6 +1983,7 @@ class GameManager:
         if not game:
             return {"success": False, "error": f"Game not found: {game_id}"}
 
+        game.begin_level_transition()
         game.running = False
         if game.thread:
             game.thread.join(timeout=5)
