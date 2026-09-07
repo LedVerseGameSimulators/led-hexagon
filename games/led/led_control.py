@@ -24,6 +24,40 @@ com_is_block = False
 g_has_open = False
 rect_position_arr = None
 
+
+def _encode_wire_color(color):
+    """Map logical RGB to wire bytes (sync byte 255 reserved for frame header)."""
+    return (
+        max(0, min(254, int(color[0]))),
+        max(0, min(254, int(color[1]))),
+        max(0, min(254, int(color[2]))),
+    )
+
+
+def _encode_wire_tile(cell):
+    """Flatten one 3-ring cell to 9 payload bytes (outer→mid→inner × RGB)."""
+    payload = []
+    for k in range(2, -1, -1):
+        ring = cell[k]
+        r, g, b = _encode_wire_color(ring)
+        payload.extend((r, g, b))
+    return payload
+
+
+def build_floor_wire_frame(logic_2array, wire_positions):
+    """Build [255,255] + 9-byte/tile payload for floor tiles in wire order."""
+    frame = [255, 255]
+    row = len(logic_2array)
+    col = len(logic_2array[0]) if row else 0
+    for ri, ci in reversed(wire_positions):
+        if 0 <= ri < row and 0 <= ci < col:
+            cell = logic_2array[ri][ci]
+        else:
+            cell = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        frame.extend(_encode_wire_tile(cell))
+    return frame
+
+
 def init_layout(layout_type, layout_row, layout_col, position_no_use):
     global rect_position_arr
     rect_position_arr = [
@@ -117,18 +151,8 @@ def draw_screen_by_com(layout_type, logic_2array):
                 values = [
                  com[1], com[2]]
                 array = rect_position_arr[int(values[0]) - 1:int(values[1])]
-                array_com_protocal = [255, 255]
-                for coors in list(reversed(array)):
-                    ri, ci = coors[0], coors[1]
-                    for k in range(2, -1, -1):
-                        if 0 <= ri < row and 0 <= ci < col:
-                            tuple_color = logic_2array[ri][ci][k]
-                        else:
-                            tuple_color = (0, 0, 0)
-                        array_com_protocal.append(tuple_color[0])
-                        array_com_protocal.append(tuple_color[1])
-                        array_com_protocal.append(tuple_color[2])
-
+                wire_positions = [tuple(coors) for coors in array]
+                array_com_protocal = build_floor_wire_frame(logic_2array, wire_positions)
                 com[0].Send_data(array_com_protocal)
                 i += 1
 
@@ -144,10 +168,8 @@ def display_led_screen():
              com[1], com[2]]
             array = m_led_color_one_array[int(values[0]) - 1:int(values[1])]
             array_com_protocal = [255, 255]
-            for tuple in list(reversed(array)):
-                array_com_protocal.append(tuple[0])
-                array_com_protocal.append(tuple[1])
-                array_com_protocal.append(tuple[2])
+            for color in list(reversed(array)):
+                array_com_protocal.extend(_encode_wire_color(color))
 
             com[0].Send_data(array_com_protocal)
 

@@ -524,7 +524,7 @@ class HeadlessGameGUI:
                     start_time = group.start_time_sec
                     end_time = group.end_time_sec
                     if set_cell is not None and total_pass > start_time and total_pass < end_time:
-                        color = getattr(group, 'color', (0, 255, 0))
+                        color = getattr(group, 'color', (0, 254, 0))
                         if hasattr(self.led_table, 'set_color_table_by_set_cell'):
                             self.led_table.set_color_table_by_set_cell(set_cell, color)
         except Exception as e:
@@ -1600,7 +1600,7 @@ class GameManager:
                                 continue
                             fi, fj = cell
                             on = int(el / 0.1) % 2 == 0
-                            col = [255, 255, 255] if on else [0, 0, 0]
+                            col = [254, 254, 254] if on else [0, 0, 0]
                             led_display[fi * cols + fj] = [col[:], col[:], col[:]]
 
                         _now = time.time()
