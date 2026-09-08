@@ -165,6 +165,10 @@ _HW_DEFAULT_COLS = 26
 _hw_led_control = None
 _hw_layout_type = 0
 _HW_DRAW_INTERVAL = float(os.environ.get("HW_DRAW_INTERVAL", "0.045"))
+# When scoreables remain but none are reachable (masked) and no future wave
+# will expose them, wait this long for moving masks before finishing the level.
+# Matches Climb's masked-goal rescue (and Grid).
+_MASKED_GOAL_GRACE = float(os.environ.get("MASKED_GOAL_GRACE", "1.0"))
 _hw_serial_lock = threading.Lock()
 
 
@@ -646,6 +650,7 @@ class GameInstance:
         self._level_cleared = False    # True -> advance to next level
         self._restart_level = False    # True -> replay same level (life=0, time left)
         self._end_reason = None        # why the session loop exited: timeout/None(=cleared)
+        self._no_reachable_goal_since = None  # monotonic clock for masked-goal grace
 
         self.current_state = {
             "score": 0,
@@ -691,6 +696,7 @@ class GameInstance:
         self.last_life_loss_time = 0.0
         self._level_cleared = False
         self._restart_level = False
+        self._no_reachable_goal_since = None
         self._memory_mode = False      # re-set correctly in _setup_level per level
         self.hint_cells = set()
         self._reveal_until = self._reveal_duration   # fresh level -> initial 5s reveal
@@ -1509,11 +1515,31 @@ class GameManager:
                                 if st > total_pass and (next_start is None or st < next_start):
                                     next_start = st
                             if next_start is not None:
+                                game._no_reachable_goal_since = None
                                 logger.debug(f"Auto-jump: {total_pass:.1f}s -> {next_start:.1f}s")
                                 play_self.total_pass = next_start
                                 game.last_life_loss_time = 0.0  # reset hazard gate
                                 if game._memory_mode:
                                     game._clear_all_reveals()  # no ghost paint into next wave
+                            else:
+                                # No visible goals and no future wave. Give moving
+                                # masks a short chance to clear, then finish instead
+                                # of waiting until board_time (Climb parity).
+                                now_mono = time.monotonic()
+                                if game._no_reachable_goal_since is None:
+                                    game._no_reachable_goal_since = now_mono
+                                elif (
+                                    now_mono - game._no_reachable_goal_since
+                                    >= _MASKED_GOAL_GRACE
+                                ):
+                                    logger.warning(
+                                        "Level cleared with {} unreachable masked goal(s)",
+                                        remaining_scoreable,
+                                    )
+                                    game._level_cleared = True
+                                    return False
+                        else:
+                            game._no_reachable_goal_since = None
 
                         hardware_state = None
                         if USE_SERIAL_HD and _hw_led_control is not None:
