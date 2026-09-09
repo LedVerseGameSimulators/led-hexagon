@@ -47,10 +47,15 @@ copy /Y "D:\ledhexagonv010109\ledhexagon\setting\*" "%ROOT%\games\setting" >nul
 if errorlevel 1 goto :fail
 
 :after_settings
+REM Prefer Python 3.11 when both 3.11 and 3.12 are installed
+if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" (
+  set "PATH=%LOCALAPPDATA%\Programs\Python\Python311;%LOCALAPPDATA%\Programs\Python\Python311\Scripts;%PATH%"
+)
+
 echo  Checking Python packages...
 python -c "import fastapi, uvicorn, httpx, serial" >nul 2>&1
 if errorlevel 1 (
-  echo  Installing Python packages (first time)...
+  echo  Installing Python packages - first time...
   python -m pip install -r "%ROOT%\api\requirements.txt"
   if errorlevel 1 goto :fail
 )
