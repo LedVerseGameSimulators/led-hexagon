@@ -313,6 +313,75 @@ def _rgb_is_red(rgb):
     return rgb[0] >= 200 and rgb[1] < 80 and rgb[2] < 30
 
 
+# Display overlap ranks (separate from interaction classification).
+_DISPLAY_RANK_HAZARD = 2
+_DISPLAY_RANK_GOAL = 1
+_DISPLAY_RANK_DECOR = 0
+
+_FLOOR_LIGHT = "normal_led"
+_WALL_LIGHT = "goal_led"
+_SCREEN_LIGHT = "goal2_led"
+
+# Max 2P respawns per (row, col) before tile stays consumed.
+
+
+def _build_display_winners(dgroup, *, total_pass, gc, gc2, rows, cols):
+    """Per-cell display priority: hazard (red/deduct) wins over goals for paint."""
+    winners = {}
+    for g in dgroup.values():
+        sm = getattr(g, "start_member", None)
+        if not sm:
+            continue
+        if getattr(g, "type", None) != _FLOOR_LIGHT:
+            continue
+        if not (g.start_time_sec <= total_pass <= g.end_time_sec):
+            continue
+        mc = _group_main_color(g.color)
+        is_deduct = _rgb_is_deduct(mc)
+        is_p1_color = gc is not None and mc == gc
+        is_p2_color = gc2 is not None and mc == gc2
+        is_red = (
+            not is_deduct
+            and not is_p1_color
+            and not is_p2_color
+            and _rgb_is_red(mc)
+        )
+        if is_deduct:
+            rank, category = _DISPLAY_RANK_HAZARD, "deduct"
+        elif is_red:
+            rank, category = _DISPLAY_RANK_HAZARD, "red"
+        elif is_p1_color or is_p2_color:
+            rank, category = _DISPLAY_RANK_GOAL, "goal"
+        else:
+            rank, category = _DISPLAY_RANK_DECOR, "decor"
+        color_full = g.color
+        for cell in sm:
+            ci = round(cell[0])
+            cj = round(cell[1])
+            if not (0 <= ci < rows and 0 <= cj < cols):
+                continue
+            prev = winners.get((ci, cj))
+            if prev is None or rank > prev[0]:
+                winners[(ci, cj)] = (rank, category, color_full)
+    return winners
+
+
+def _display_hazard_cells(display_winners):
+    return {
+        cell
+        for cell, (rank, category, _color) in display_winners.items()
+        if rank == _DISPLAY_RANK_HAZARD and category in ("red", "deduct")
+    }
+
+
+def _apply_display_hazards(led_display, display_winners, cols):
+    """Stamp moving red / deduct on top of led_display at overlap cells."""
+    for (ci, cj), (rank, category, color_full) in display_winners.items():
+        if rank != _DISPLAY_RANK_HAZARD or category not in ("red", "deduct"):
+            continue
+        led_display[ci * cols + cj] = _normalize_rings(color_full)
+
+
 # Memory-mode camouflage / already-checked empties (3 rings each).
 _TEAL_HIDDEN = [[0, 62, 62], [0, 62, 62], [0, 62, 62]]
 _CHECKED_TEAL = [[0, 40, 40], [0, 40, 40], [0, 40, 40]]  # darker: "I already tried this"
@@ -1560,6 +1629,16 @@ class GameManager:
                             hardware_state=hardware_state,
                         )
 
+                        display_winners = _build_display_winners(
+                            dgroup,
+                            total_pass=total_pass,
+                            gc=gc,
+                            gc2=gc2,
+                            rows=led_table.led_row,
+                            cols=led_table.led_col,
+                        )
+                        hazard_overlay = _display_hazard_cells(display_winners)
+
                         # 2) Build display buffer from led_table (3 rings per cell).
                         led_display = [_normalize_rings(cell)
                                        for row in grid for cell in row]
@@ -1568,8 +1647,8 @@ class GameManager:
                         # 2a) MEMORY MODE paint order:
                         #   1) teal-hide unscored targets (or bright during reveal)
                         #   2) per-life revealed_colors (scored / deduct / checked empty)
-                        #   3) moving red on top (danger always visible)
-                        #   4) hint blink
+                        #   3) hint blink
+                        #   4) moving red / deduct on top (display priority)
                         #   5) white flash (below)
                         if game._memory_mode:
                             TEAL_HIDDEN = [c[:] for c in _TEAL_HIDDEN]
@@ -1582,21 +1661,21 @@ class GameManager:
                             if goal_cells:
                                 bright = _normalize_rings(goal_color_full) if reveal1_active else TEAL_HIDDEN
                                 for (ci, cj) in goal_cells:
+                                    if (ci, cj) in hazard_overlay:
+                                        continue
                                     led_display[ci * cols + cj] = bright
                             if goal2_cells:
                                 bright2 = _normalize_rings(goal2_color_full) if reveal2_active else TEAL_HIDDEN
                                 for (ci, cj) in goal2_cells:
+                                    if (ci, cj) in hazard_overlay:
+                                        continue
                                     led_display[ci * cols + cj] = bright2
                             # Spent / checked cells stay painted for this life
                             # (do not blank after consume).
                             for (ci, cj), paint in game.revealed_colors.items():
+                                if (ci, cj) in hazard_overlay:
+                                    continue
                                 led_display[ci * cols + cj] = [c[:] for c in paint]
-                            # Moving RED hazard on top of reveal paint so a
-                            # sweeping danger is never hidden by a checked cell.
-                            if red_cells:
-                                red_paint = _normalize_rings(red_color_full)
-                                for (ci, cj) in red_cells:
-                                    led_display[ci * cols + cj] = red_paint
                             # Hint tile itself: there's only ONE physical button
                             # (P1's and P2's indicator groups sit on the same
                             # cell, and the floor has no per-player input
@@ -1615,7 +1694,12 @@ class GameManager:
                                 else:
                                     hint_paint = _normalize_rings(hint2_color_full)
                                 for (ci, cj) in hint_cells:
+                                    if (ci, cj) in hazard_overlay:
+                                        continue
                                     led_display[ci * cols + cj] = hint_paint
+                            _apply_display_hazards(led_display, display_winners, cols)
+                        else:
+                            _apply_display_hazards(led_display, display_winners, cols)
 
                         # 2b) FLASH: stepped tiles blink white ~0.4s then vanish.
                         now = time.time()
