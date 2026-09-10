@@ -323,6 +323,9 @@ _WALL_LIGHT = "goal_led"
 _SCREEN_LIGHT = "goal2_led"
 
 # Max 2P respawns per (row, col) before tile stays consumed.
+_MAX_RESPAWNS_PER_CELL = 8
+
+# Max 2P respawns per (row, col) before tile stays consumed.
 
 
 def _build_display_winners(dgroup, *, total_pass, gc, gc2, rows, cols):
@@ -638,6 +641,7 @@ class GameInstance:
         self.zone = None          # (row_from,row_to,col_from,col_to) active area
         # 2P respawn: consumed goal tiles reappear after delay (only for .ledb multiplayer)
         self.pending_respawn = []  # [[group, (i,j), reappear_wall_time], ...]
+        self.respawn_counts = {}   # (i,j) -> respawns enqueued (cap at _MAX_RESPAWNS_PER_CELL)
         self.respawn_delay = 8.0   # seconds; tunable
         # Same-color 2P (e.g. DK03 cyan==cyan): alternate P1→P2→P1→P2 per cell.
         # Cells in this set score P2 next; others score P1.
@@ -755,6 +759,7 @@ class GameInstance:
         self.scored_active = set()
         self.scored_active2 = set()
         self.pending_respawn = []
+        self.respawn_counts = {}
         self.p2_next_cells = set()
         self.goal_cells = set()
         self.goal2_cells = set()
@@ -1133,7 +1138,10 @@ class GameInstance:
                         else:
                             sm.remove((i, j))
                         if reappear_at is not None:
-                            self.pending_respawn.append([g, (i, j), reappear_at])
+                            key = (i, j)
+                            if self.respawn_counts.get(key, 0) < _MAX_RESPAWNS_PER_CELL:
+                                self.respawn_counts[key] = self.respawn_counts.get(key, 0) + 1
+                                self.pending_respawn.append([g, (i, j), reappear_at])
                     except Exception:
                         pass
         # display-only hit flash (white blink) for ~0.4s
