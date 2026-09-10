@@ -325,7 +325,53 @@ _SCREEN_LIGHT = "goal2_led"
 # Max 2P respawns per (row, col) before tile stays consumed.
 _MAX_RESPAWNS_PER_CELL = 8
 
-# Max 2P respawns per (row, col) before tile stays consumed.
+
+def _level_goal_colors(groups):
+    """All goal-indicator colors in the level (union across gc-shift phases)."""
+    colors = set()
+    for g in groups.values():
+        gtype = getattr(g, "type", None)
+        if gtype not in (_WALL_LIGHT, _SCREEN_LIGHT):
+            continue
+        colors.add(_group_main_color(g.color))
+    return colors
+
+
+def _count_remaining_scoreable(groups, level_goal_colors):
+    """Scoreable members left in any wave, matching any level goal color."""
+    total = 0
+    for g in groups.values():
+        if getattr(g, "type", None) != _FLOOR_LIGHT:
+            continue
+        sm = getattr(g, "start_member", None)
+        if not sm:
+            continue
+        mc = _group_main_color(g.color)
+        if _rgb_is_deduct(mc):
+            continue
+        if mc in level_goal_colors:
+            total += len(sm)
+    return total
+
+
+def _next_scoreable_wave_start(groups, total_pass, level_goal_colors):
+    """Earliest future scoreable wave for any level goal color."""
+    next_start = None
+    for g in groups.values():
+        if getattr(g, "type", None) != _FLOOR_LIGHT:
+            continue
+        sm = getattr(g, "start_member", None)
+        if not sm:
+            continue
+        mc = _group_main_color(g.color)
+        if _rgb_is_deduct(mc):
+            continue
+        if mc not in level_goal_colors:
+            continue
+        st = getattr(g, "start_time_sec", 0)
+        if st > total_pass and (next_start is None or st < next_start):
+            next_start = st
+    return next_start
 
 
 def _build_display_winners(dgroup, *, total_pass, gc, gc2, rows, cols):
@@ -1534,31 +1580,17 @@ class GameManager:
                                 game._clear_cell_reveal(cell)
 
                         # ── LEVEL COMPLETION / WAVE-SKIP ─────────────────────
-                        # Unlike hoops/laser/climb/grid, hexagon's scoreable
-                        # color isn't a fixed constant -- it's derived from
-                        # whichever WALL_LIGHT indicator group is currently
-                        # active (gc/gc2, resolved above). We use THIS frame's
-                        # already-resolved gc/gc2 as the snapshot for both
-                        # checks below. If the indicator later shifts to a
-                        # different color, per-frame classification picks that
-                        # up on its own regardless of this skip logic -- the
-                        # skip only shortcuts guaranteed-empty stretches, it
-                        # never gates what actually becomes scoreable.
-                        # Mirrors the classification loop's own is_goal/is_goal2
-                        # exclusion (a DEDUCT-colored group matching gc/gc2 by
-                        # coincidence must not count as scoreable).
-                        remaining_scoreable = 0
-                        for g in dgroup.values():
-                            if getattr(g, "type", None) != Setting.FLOOR_LIGHT:
-                                continue
-                            sm = getattr(g, "start_member", None)
-                            if not sm:
-                                continue
-                            mc = _group_main_color(g.color)
-                            if _rgb_is_deduct(mc):
-                                continue
-                            if mc == gc or mc == gc2:
-                                remaining_scoreable += len(sm)
+                        # Live paint/interaction still use this frame's gc/gc2.
+                        # Clear/jump must use the UNION of all goal_led /
+                        # goal2_led colors in the level so a mid-level gc shift
+                        # (e.g. Pro 04 cyan→magenta @60s) cannot treat leftover
+                        # prior-color scoreables as "none remaining".
+                        # DEDUCT-colored floor groups are excluded (same as
+                        # classification).
+                        level_goal_colors = _level_goal_colors(dgroup)
+                        remaining_scoreable = _count_remaining_scoreable(
+                            dgroup, level_goal_colors
+                        )
 
                         # Grace period (>1.5s) so the level has time to spawn
                         # its first wave. All scoreable cleared -> LEVEL done
@@ -1576,21 +1608,9 @@ class GameManager:
                         # scoreable wave's start.
                         if total_pass > 1.5 and remaining_scoreable > 0 \
                                 and not goal_cells and not goal2_cells:
-                            next_start = None
-                            for g in dgroup.values():
-                                if getattr(g, "type", None) != Setting.FLOOR_LIGHT:
-                                    continue
-                                sm = getattr(g, "start_member", None)
-                                if not sm:
-                                    continue
-                                mc = _group_main_color(g.color)
-                                if _rgb_is_deduct(mc):
-                                    continue
-                                if mc != gc and mc != gc2:
-                                    continue
-                                st = g.start_time_sec
-                                if st > total_pass and (next_start is None or st < next_start):
-                                    next_start = st
+                            next_start = _next_scoreable_wave_start(
+                                dgroup, total_pass, level_goal_colors
+                            )
                             if next_start is not None:
                                 game._no_reachable_goal_since = None
                                 logger.debug(f"Auto-jump: {total_pass:.1f}s -> {next_start:.1f}s")
