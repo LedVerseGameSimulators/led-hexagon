@@ -94,10 +94,15 @@ export default function App() {
   }
 
   // Step 2: settings confirmed — clear resumeGameId so simulator starts fresh
-  const handleSettings = ({ game, level, playerCount, difficulty }) => {
+  const handleSettings = ({ game, level, playerCount, difficulty, playMode }) => {
     setGameConfig(prev => ({
-      ...prev, game, level, playerCount, difficulty,
-      resumeGameId: undefined   // don't resume old game
+      ...prev,
+      game,
+      level,
+      playerCount,
+      difficulty,
+      playMode: playMode || prev.playMode,
+      resumeGameId: undefined, // don't resume old game
     }))
     setScreen(S.LOGIN)
   }
@@ -151,13 +156,14 @@ export default function App() {
         <GameSettingsScreen
           game={gameConfig.game}
           playerCount={gameConfig.playerCount}
+          playMode={gameConfig.playMode}
           onConfirm={handleSettings}
           onBack={() => setScreen(S.GAME_SELECT)}
         />
       )}
       {screen === S.LOGIN && (
         <LoginScreen
-          gameTitle="LED Hex"
+          gameTitle="Battle Arena"
           playerCount={gameConfig.playerCount}
           onLogin={handleLogin}
           onBack={() => setScreen(

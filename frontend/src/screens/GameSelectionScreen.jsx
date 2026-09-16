@@ -1,33 +1,36 @@
+import VideoBackground from '../components/VideoBackground'
+
 const MODES = [
   {
     id: 'single',
-    title: 'Single Player',
-    desc: 'One player challenge',
+    title: 'Quick Play',
+    desc: 'Solo · 20 levels · Medium',
     icon: '1',
   },
   {
     id: 'multi',
-    title: 'Multiplayer',
-    desc: 'Two players head-to-head',
+    title: 'Team Battle',
+    desc: '2 players · 20 levels · Medium',
     icon: '2',
   },
   {
     id: 'group',
-    title: 'Group',
-    desc: 'Team play mode',
-    icon: 'G',
+    title: 'Tournament',
+    desc: 'Group session · fixed level set',
+    icon: 'T',
   },
 ]
 
 export default function GameSelectionScreen({ onSelect, loading = false }) {
   return (
-    <div className="screen">
+    <div className="screen screen-with-video">
+      <VideoBackground />
       <div className="landing">
         <header className="landing-hero">
           <h1 className="landing-brand">ACTIVERSE</h1>
-          <p className="landing-product">LED Hex</p>
+          <p className="landing-product">Battle Arena</p>
           <p className="landing-tagline">
-            {loading ? 'Loading group level…' : 'Choose how you want to play'}
+            {loading ? 'Loading…' : 'Choose how you want to play'}
           </p>
         </header>
 

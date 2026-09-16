@@ -1165,3 +1165,75 @@ button.btn-muted:hover:not(:disabled) {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ── Video background shell ───────────────────────────────────────── */
+.screen-with-video {
+  position: relative;
+  isolation: isolate;
+}
+
+.video-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.video-bg-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.04);
+}
+
+.video-bg-dim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 7, 13, 0.55), rgba(7, 7, 13, 0.78)),
+    radial-gradient(ellipse 60% 50% at 50% 40%, rgba(0, 238, 255, 0.12), transparent 70%);
+}
+
+.screen-with-video > *:not(.video-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Level picker grid (1–20) ─────────────────────────────────────── */
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.level-grid-btn {
+  min-height: var(--tap-min);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.level-grid-btn.selected {
+  border-color: transparent;
+  background: var(--accent-gradient);
+  color: #07070d;
+  box-shadow: var(--shadow-glow);
+}
+
+.how-to-copy {
+  margin-top: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(10, 10, 18, 0.72);
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
