@@ -160,8 +160,13 @@ input {
   grid-template-areas:
     'modes panel'
     'ready ready';
-  gap: 20px 24px;
+  gap: 20px 28px;
   align-items: stretch;
+  background: rgba(12, 12, 16, 0.9);
+  border: 1px solid rgba(255, 26, 140, 0.4);
+  border-radius: 16px;
+  padding: 24px 26px 22px;
+  box-shadow: 0 0 40px rgba(255, 26, 140, 0.12);
 }
 
 .setup-modes {
@@ -181,18 +186,19 @@ input {
 
 .setup-panel {
   grid-area: panel;
-  background: rgba(18, 18, 24, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: 360px;
+  min-height: 0;
 }
 
 .setup-ready {
   grid-area: ready;
+  width: 100%;
 }
 
 @media (max-width: 860px) {
@@ -230,10 +236,14 @@ input {
 .mode-btn-multi { border-color: var(--border-cyan); }
 .mode-btn-group { border-color: var(--border-purple); }
 
-.mode-btn-single:hover:not(.is-selected),
-.mode-btn-multi:hover:not(.is-selected),
-.mode-btn-group:hover:not(.is-selected) {
+.mode-btn-single:hover:not(.is-selected) {
   background: rgba(255, 26, 140, 0.12);
+}
+.mode-btn-multi:hover:not(.is-selected) {
+  background: rgba(0, 229, 255, 0.1);
+}
+.mode-btn-group:hover:not(.is-selected) {
+  background: rgba(155, 92, 255, 0.12);
 }
 
 /* Selected = same for all modes: solid magenta + white text */
@@ -370,12 +380,12 @@ input {
 }
 
 .level-chip {
-  min-height: 56px;
+  min-height: 52px;
   border-radius: var(--radius-sm);
   background: var(--bg-chip);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--text-muted);
-  font-size: 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
@@ -407,6 +417,10 @@ input {
   gap: 6px;
   font-size: 0.98rem;
   line-height: 1.4;
+}
+
+.howto-list li::marker {
+  color: var(--accent);
 }
 
 /* ── Login card (mock) ────────────────────────────────────────────── */
@@ -506,6 +520,12 @@ input {
   flex-direction: column;
   align-items: center;
   gap: 18px;
+  background: rgba(12, 12, 16, 0.9);
+  border: 1px solid rgba(255, 26, 140, 0.35);
+  border-radius: 16px;
+  padding: 48px 56px 36px;
+  min-width: min(420px, 100%);
+  box-shadow: 0 0 40px rgba(255, 26, 140, 0.12);
 }
 
 .countdown-get-ready {

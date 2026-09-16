@@ -94,10 +94,7 @@ export default function SetupScreen({ game = 'led_hex', onConfirm }) {
                     setSelectedIndex(0)
                   }}
                 >
-                  {selected && m.id === 'single' && (
-                    <span className="mode-selected-tag">Selected</span>
-                  )}
-                  {selected && m.id !== 'single' && (
+                  {selected && (
                     <span className="mode-selected-tag">Selected</span>
                   )}
                   <span className="mode-badge" aria-hidden="true">{m.badge}</span>
