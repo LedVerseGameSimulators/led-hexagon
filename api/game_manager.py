@@ -2123,6 +2123,14 @@ class GameManager:
 
         game.begin_level_transition()
         game.running = False
+        # Always kill BGM on stop (natural end also stops in level finally;
+        # mid-session /logout must not leave music running).
+        audio = getattr(game, "_audio", None)
+        if audio is not None:
+            try:
+                audio.stop_bgm()
+            except Exception:
+                pass
         if game.thread:
             game.thread.join(timeout=5)
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import VideoBackground from '../components/VideoBackground'
 import {
-  HOW_TO,
+  HOW_TO_BULLETS,
   QUICK_PLAY_LEVELS,
   TEAM_BATTLE_LEVELS,
 } from '../levelPlaylists'
@@ -17,9 +17,10 @@ export default function GameSettingsScreen({
   const players = playerCount ?? 1
   const ids = players === 2 ? TEAM_BATTLE_LEVELS : QUICK_PLAY_LEVELS
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const modeName = players === 2 ? 'Team Battle' : 'Quick Play'
 
-  const howTo = useMemo(
-    () => (players === 2 ? HOW_TO.multi : HOW_TO.single),
+  const bullets = useMemo(
+    () => (players === 2 ? HOW_TO_BULLETS.multi : HOW_TO_BULLETS.single),
     [players]
   )
 
@@ -32,7 +33,6 @@ export default function GameSettingsScreen({
       level: selectedId,
       levelData: { id: selectedId, name: String(selectedIndex + 1) },
       playerCount: players,
-      // Locked product: treat as medium without extra difficulty UI
       difficulty: 'normal',
       playMode,
     })
@@ -41,39 +41,47 @@ export default function GameSettingsScreen({
   return (
     <div className="screen screen-with-video">
       <VideoBackground />
-      <div className="card settings-card">
-        <h1>Battle Arena</h1>
-        <p className="settings-subtitle">
-          {players === 2 ? 'Team Battle' : 'Quick Play'} · Select level · Medium
-        </p>
-
-        <h2 className="settings-section-label">
-          LEVEL <span className="settings-count">({ids.length})</span>
-        </h2>
-        <div className="level-grid" role="listbox" aria-label="Levels">
-          {ids.map((id, i) => (
-            <button
-              key={id}
-              type="button"
-              role="option"
-              aria-selected={selectedIndex === i}
-              className={`level-grid-btn ${selectedIndex === i ? 'selected' : ''}`}
-              onClick={() => setSelectedIndex(i)}
-              title={id}
-            >
-              {i + 1}
-            </button>
-          ))}
+      {onBack && (
+        <button type="button" className="btn-back" onClick={onBack}>
+          Back
+        </button>
+      )}
+      <div className="setup-shell">
+        <div className="setup-head">
+          <p className="setup-kicker">Select Level</p>
+          <p className="setup-mode-name">{modeName} · {ids.length} available</p>
         </div>
 
-        <h2 className="settings-section-label">HOW TO PLAY</h2>
-        <p className="how-to-copy">{howTo}</p>
+        <div>
+          <p className="setup-label">Levels</p>
+          <div className="level-grid" role="listbox" aria-label="Levels">
+            {ids.map((id, i) => (
+              <button
+                key={id}
+                type="button"
+                role="option"
+                aria-selected={selectedIndex === i}
+                className={`level-chip ${selectedIndex === i ? 'is-selected' : ''}`}
+                onClick={() => setSelectedIndex(i)}
+                title={id}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <button type="button" onClick={handleConfirm} style={{ marginTop: '24px' }}>
-          Next → Login
-        </button>
-        <button type="button" onClick={onBack} className="btn-secondary" style={{ marginTop: '10px' }}>
-          Back
+        <div className="howto">
+          <p className="howto-title">How to play — {modeName}</p>
+          <ul className="howto-list">
+            {bullets.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+
+        <button type="button" className="btn-primary" onClick={handleConfirm}>
+          I&apos;m Ready
         </button>
       </div>
     </div>

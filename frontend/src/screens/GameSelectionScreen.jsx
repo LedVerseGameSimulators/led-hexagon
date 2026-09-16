@@ -4,20 +4,23 @@ const MODES = [
   {
     id: 'single',
     title: 'Quick Play',
-    desc: 'Solo · 20 levels · Medium',
-    icon: '1',
+    sub: 'Solo · Basic',
+    badge: '1',
+    className: 'mode-btn-single',
   },
   {
     id: 'multi',
     title: 'Team Battle',
-    desc: '2 players · 20 levels · Medium',
-    icon: '2',
+    sub: 'Co-op · 2 players',
+    badge: '2',
+    className: 'mode-btn-multi',
   },
   {
     id: 'group',
     title: 'Tournament',
-    desc: 'Group session · fixed level set',
-    icon: 'T',
+    sub: 'Co-op · Bracket',
+    badge: 'T',
+    className: 'mode-btn-group',
   },
 ]
 
@@ -25,28 +28,21 @@ export default function GameSelectionScreen({ onSelect, loading = false }) {
   return (
     <div className="screen screen-with-video">
       <VideoBackground />
-      <div className="landing">
-        <header className="landing-hero">
-          <h1 className="landing-brand">ACTIVERSE</h1>
-          <p className="landing-product">Battle Arena</p>
-          <p className="landing-tagline">
-            {loading ? 'Loading…' : 'Choose how you want to play'}
-          </p>
-        </header>
-
-        <div className="mode-grid" aria-busy={loading || undefined}>
+      <div className="mode-shell">
+        <p className="mode-shell-title">Choose Mode</p>
+        <div className="mode-list" aria-busy={loading || undefined}>
           {MODES.map((mode) => (
             <button
               key={mode.id}
               type="button"
-              className="mode-card"
+              className={`mode-btn ${mode.className}`}
               disabled={loading}
               onClick={() => onSelect(mode.id)}
             >
-              <span className="mode-card-icon" aria-hidden="true">{mode.icon}</span>
-              <span className="mode-card-text">
-                <span className="mode-card-title">{mode.title}</span>
-                <span className="mode-card-desc">{mode.desc}</span>
+              <span className="mode-badge" aria-hidden="true">{mode.badge}</span>
+              <span className="mode-copy">
+                <span className="mode-title">{mode.title}</span>
+                <span className="mode-sub">{mode.sub}</span>
               </span>
             </button>
           ))}
