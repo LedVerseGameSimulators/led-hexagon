@@ -374,6 +374,112 @@ def _next_scoreable_wave_start(groups, total_pass, level_goal_colors):
     return next_start
 
 
+def _mp_cell_player_side(ci, cj, mc, gc, gc2):
+    """Classify a floor cell as P1 (1), P2 (2), or non-scoreable (None).
+
+    Mirrors the per-frame goal / goal2 / same_color_2p split in the callback.
+    """
+    if _rgb_is_deduct(mc):
+        return None
+    is_p1_color = gc is not None and mc == gc
+    is_p2_color = gc2 is not None and mc == gc2
+    is_goal = is_p1_color
+    is_goal2 = is_p2_color
+    if is_goal and is_goal2:
+        return 1 if (ci + cj) % 2 == 0 else 2
+    if is_goal:
+        return 1
+    if is_goal2:
+        return 2
+    return None
+
+
+def _mp_collect_side_current_wave(groups, total_pass, gc, gc2, side):
+    """Scoreable cells for one player in the active time window."""
+    cells = set()
+    for g in groups.values():
+        if getattr(g, "type", None) != _FLOOR_LIGHT:
+            continue
+        sm = getattr(g, "start_member", None)
+        if not sm:
+            continue
+        st = getattr(g, "start_time_sec", 0)
+        et = getattr(g, "end_time_sec", 0)
+        if not (st <= total_pass <= et):
+            continue
+        mc = _group_main_color(g.color)
+        for cell in sm:
+            ci = round(cell[0])
+            cj = round(cell[1])
+            if _mp_cell_player_side(ci, cj, mc, gc, gc2) == side:
+                cells.add((ci, cj))
+    return cells
+
+
+def _mp_discard_side_current_wave(game, groups, total_pass, gc, gc2, side):
+    """Drop one player's unconsumed current-wave scoreables (MP Phase B).
+
+    Uses the same active-window filter as ``_consume_cell``. Clears
+    ``pending_respawn`` and per-cell memory reveals so discarded tiles cannot
+    ghost-respawn or stay painted.
+    """
+    to_drop = _mp_collect_side_current_wave(groups, total_pass, gc, gc2, side)
+    if not to_drop:
+        return set()
+    for g in groups.values():
+        if getattr(g, "type", None) != _FLOOR_LIGHT:
+            continue
+        sm = getattr(g, "start_member", None)
+        if not sm:
+            continue
+        st = getattr(g, "start_time_sec", 0)
+        et = getattr(g, "end_time_sec", 0)
+        if not (st <= total_pass <= et):
+            continue
+        mc = _group_main_color(g.color)
+        for cell in list(sm):
+            ci = round(cell[0])
+            cj = round(cell[1])
+            if (ci, cj) not in to_drop:
+                continue
+            if _mp_cell_player_side(ci, cj, mc, gc, gc2) != side:
+                continue
+            try:
+                if isinstance(sm, set):
+                    sm.discard((ci, cj))
+                else:
+                    sm.remove((ci, cj))
+            except Exception:
+                pass
+    if side == 1:
+        game.scored_active -= to_drop
+    else:
+        game.scored_active2 -= to_drop
+    game.pending_respawn = [
+        entry for entry in game.pending_respawn if entry[1] not in to_drop
+    ]
+    for cell in to_drop:
+        game._clear_cell_reveal(cell)
+    return to_drop
+
+
+def _mp_wave_ready(game, goal_cells, goal2_cells):
+    """Either-player advance with vacuous-empty latch (Team Battle only)."""
+    p1_cleared = game._mp_p1_had_wave_tiles and not goal_cells
+    p2_cleared = game._mp_p2_had_wave_tiles and not goal2_cells
+    return p1_cleared or p2_cleared
+
+
+def _mp_wave_clearing_sides(game, goal_cells, goal2_cells):
+    """Sides that cleared the current wave (for discard targeting)."""
+    sides = []
+    if game._mp_p1_had_wave_tiles and not goal_cells:
+        sides.append(1)
+    if game._mp_p2_had_wave_tiles and not goal2_cells:
+        sides.append(2)
+    return sides
+
+
 def _build_display_winners(dgroup, *, total_pass, gc, gc2, rows, cols):
     """Per-cell display priority: hazard (red/deduct) wins over goals for paint."""
     winners = {}
@@ -770,6 +876,9 @@ class GameInstance:
         self._restart_level = False    # True -> replay same level (life=0, time left)
         self._end_reason = None        # why the session loop exited: timeout/None(=cleared)
         self._no_reachable_goal_since = None  # monotonic clock for masked-goal grace
+        # MP Phase B: vacuous-empty latch per wave (Team Battle only).
+        self._mp_p1_had_wave_tiles = False
+        self._mp_p2_had_wave_tiles = False
 
         self.current_state = {
             "score": 0,
@@ -827,6 +936,8 @@ class GameInstance:
         self._goal_color_full = None
         self._goal2_color_full = None
         self._deduct_color_full = None
+        self._mp_p1_had_wave_tiles = False
+        self._mp_p2_had_wave_tiles = False
 
     def _cell_pressed(self, row: int, col: int) -> bool:
         if self.led_table is None:
@@ -1652,12 +1763,43 @@ class GameManager:
                             game._level_cleared = True
                             return False
 
-                        # AUTO-JUMP: scoreable remain but none active NOW
-                        # (current wave cleared, next wave is in the future).
-                        # Skip dead time by advancing total_pass to the next
-                        # scoreable wave's start.
-                        if total_pass > 1.5 and remaining_scoreable > 0 \
-                                and not goal_cells and not goal2_cells:
+                        # AUTO-JUMP: scoreable remain but current wave is done.
+                        # 1P: both sides empty (goal2 always empty). Team Battle:
+                        # either player that HAD tiles this wave is now clear
+                        # (vacuous-empty latch — empty P2 does not count as cleared).
+                        if game.multiplayer:
+                            if goal_cells:
+                                game._mp_p1_had_wave_tiles = True
+                            if goal2_cells:
+                                game._mp_p2_had_wave_tiles = True
+                            wave_ready = _mp_wave_ready(
+                                game, goal_cells, goal2_cells
+                            )
+                        else:
+                            wave_ready = not goal_cells and not goal2_cells
+
+                        if total_pass > 1.5 and remaining_scoreable > 0 and wave_ready:
+                            if game.multiplayer:
+                                for cleared_side in _mp_wave_clearing_sides(
+                                    game, goal_cells, goal2_cells
+                                ):
+                                    other = 2 if cleared_side == 1 else 1
+                                    dropped = _mp_discard_side_current_wave(
+                                        game,
+                                        dgroup,
+                                        total_pass,
+                                        gc,
+                                        gc2,
+                                        other,
+                                    )
+                                    if dropped:
+                                        logger.debug(
+                                            "MP discard P{} leftovers ({} cells) "
+                                            "after P{} cleared wave",
+                                            other,
+                                            len(dropped),
+                                            cleared_side,
+                                        )
                             next_start = _next_scoreable_wave_start(
                                 dgroup, total_pass, level_goal_colors
                             )
@@ -1666,6 +1808,8 @@ class GameManager:
                                 logger.debug(f"Auto-jump: {total_pass:.1f}s -> {next_start:.1f}s")
                                 play_self.total_pass = next_start
                                 game.last_life_loss_time = 0.0  # reset hazard gate
+                                game._mp_p1_had_wave_tiles = False
+                                game._mp_p2_had_wave_tiles = False
                                 if game._memory_mode:
                                     game._clear_all_reveals()  # no ghost paint into next wave
                             else:

@@ -35,7 +35,8 @@
 ### Next on Hex
 - [ ] Polish restyle closer to mock JPEGs (typography / cards)  
 - [ ] Swap placeholder 20-level lists when team delivers  
-- [ ] Shared 2P rules (lives-only red, either-player advance, color swatches)  
+- [x] MP Phase A — lives-only hazards, 3-ring HUD swatches, normal-level SFX  
+- [x] MP Phase B — either-player wave advance + discard (see `docs/MP_PHASE_B_TEST_LEVELS.md`)  
 - [ ] Floor effects HW RCA (separate)  
 
 ### Later (other games)
