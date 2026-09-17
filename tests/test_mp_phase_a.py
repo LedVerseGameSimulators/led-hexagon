@@ -158,3 +158,46 @@ def test_1p_non_memory_deduct_still_score_and_life():
     assert game.life == 19
     assert game.score == 9
     assert game.score2 == 8
+
+
+class _FakeAudio:
+    def __init__(self):
+        self.hurt = 0
+        self.score = 0
+
+    def play_hurt_sfx(self):
+        self.hurt += 1
+
+    def play_score_sfx(self):
+        self.score += 1
+
+
+def test_normal_non_memory_deduct_plays_hurt_sfx():
+    game = _hazard_game(multiplayer=True, memory=False)
+    audio = _FakeAudio()
+    game._audio = audio
+    game.deduct_cells = {(7, 7)}
+    game.try_score_cell(7, 7)
+    assert audio.hurt == 1
+    assert audio.score == 0
+
+
+def test_normal_red_plays_hurt_sfx_via_helper():
+    game = _hazard_game(multiplayer=True, memory=False)
+    audio = _FakeAudio()
+    game._audio = audio
+    game.red_cells = {(8, 8)}
+    game.try_score_cell(8, 8)
+    assert audio.hurt == 1
+
+
+def test_normal_p1_and_p2_scoreable_play_score_sfx():
+    game = _hazard_game(multiplayer=True, memory=False)
+    audio = _FakeAudio()
+    game._audio = audio
+    game.goal_cells = {(9, 1)}
+    game.goal2_cells = {(9, 2)}
+    game.try_score_cell(9, 1)
+    game.try_score_cell(9, 2)
+    assert audio.score == 2
+    assert audio.hurt == 0

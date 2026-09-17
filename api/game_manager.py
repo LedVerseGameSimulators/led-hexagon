@@ -1056,10 +1056,12 @@ class GameInstance:
         """Type-aware scoring for a press on cell (i,j):
           - hint tile (memory mode) -> -5 score (NO life loss), re-reveals
             remaining targets for _reveal_duration seconds
-          - red hazard cell  -> -1 point + -1 HP (HP rate-limited; both scores in 2P)
+          - red hazard cell  -> 1P: −1 score + −1 life (rate-limited); Team Battle:
+            life only (no score/score2); hurt SFX via _apply_hazard_penalty
           - memory live deduct (after first hit) -> same hazard penalty, stays revealed
-          - DEDUCT tile -> penalty + consume; memory: reveal + keep hurting
-          - goal_led target -> +1 point + consume; memory: stay revealed (no blank)
+          - DEDUCT tile -> 1P: score + life + consume; Team Battle: life only +
+            consume; memory: reveal + keep hurting; non-memory: hurt SFX on hit
+          - goal_led target -> +1 point + consume + score SFX; memory: stay revealed
           - blank/decor (memory) -> reveal true/checked color, no score
         goal/red membership is classified per frame in the callback."""
         if not self.accepting_input:
@@ -1110,8 +1112,9 @@ class GameInstance:
             self._apply_hazard_penalty()
             return
         # DEDUCT tile: penalty then consume (edge-triggered).
-        # Memory: fair 2P (both scores) like moving red, then stay revealed and
-        # keep hurting via revealed_live_red. Non-memory: P1 score only, blank.
+        # Memory: use hazard helper (hurt SFX + rate-limit), stay revealed, keep
+        # hurting via revealed_live_red. Non-memory: one-shot life (1P also −score
+        # in Team Battle lives-only); play hurt SFX; blank via consume.
         if (i, j) in self.deduct_cells and (i, j) not in self.scored_active:
             self.scored_active.add((i, j))
             if self._memory_mode:
@@ -1123,12 +1126,15 @@ class GameInstance:
                 self._mark_revealed(i, j, deduct_paint)
                 self._consume_cell(i, j, total_pass)
             else:
-                # Non-memory DEDUCT: 1P −1 score + life; MP lives only.
+                # Non-memory DEDUCT: 1P −1 score + life; MP lives only; hurt SFX.
                 if not self.multiplayer:
                     self.score -= 1
                     if self.score < 0:
                         self.score = 0
                 self.life -= 1
+                audio = getattr(self, "_audio", None)
+                if audio is not None:
+                    audio.play_hurt_sfx()
                 self._consume_cell(i, j, total_pass)
             return
         in_p1 = (i, j) in self.goal_cells
@@ -1142,6 +1148,9 @@ class GameInstance:
                     self.scored_active2.add((i, j))
                     self.score2 += 1
                     self.p2_next_cells.discard((i, j))
+                    audio = getattr(self, "_audio", None)
+                    if audio is not None:
+                        audio.play_score_sfx()
                     self._consume_cell(i, j, total_pass)
                     if self._memory_mode:
                         self._mark_revealed(i, j, self._goal2_color_full or self._goal_color_full)
@@ -1150,6 +1159,9 @@ class GameInstance:
                     self.scored_active.add((i, j))
                     self.score += 1
                     self.p2_next_cells.add((i, j))  # next time → P2
+                    audio = getattr(self, "_audio", None)
+                    if audio is not None:
+                        audio.play_score_sfx()
                     self._consume_cell(i, j, total_pass)
                     if self._memory_mode:
                         self._mark_revealed(i, j, self._goal_color_full)
@@ -1170,6 +1182,9 @@ class GameInstance:
         if in_p2 and (i, j) not in self.scored_active2:
             self.scored_active2.add((i, j))
             self.score2 += 1
+            audio = getattr(self, "_audio", None)
+            if audio is not None:
+                audio.play_score_sfx()
             self._consume_cell(i, j, total_pass)
             if self._memory_mode:
                 self._mark_revealed(i, j, self._goal2_color_full)
