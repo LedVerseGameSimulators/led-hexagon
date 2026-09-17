@@ -40,3 +40,11 @@
 
 ### Later (other games)
 Copy this shell to Grid / Hoops / Climb / Laser (Laser = 2 modes only).
+
+## Product Q&A (2026-09-17 MP Phase A)
+
+- Team Battle **DEDUCT = lives only** (no score) — **final for now** (Hex / Climb / Grid).
+- Keep **red cooldown** vs **DEDUCT one-shot** asymmetry.
+- Climb DK packs may omit DEDUCT today; later levels may add it — OK.
+- Hex **normal** levels: hurt SFX on red/DEDUCT hits; score SFX on scoreable hits (P1 and P2).
+- Stale “2P red hits both scores” comments updated to lives-only wording.
