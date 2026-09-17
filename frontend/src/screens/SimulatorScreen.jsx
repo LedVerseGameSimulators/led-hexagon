@@ -33,6 +33,27 @@ function HeartRow({ life, maxLife }) {
   )
 }
 
+function rgbCss(rgb) {
+  if (!Array.isArray(rgb) || rgb.length < 3) return 'transparent'
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
+}
+
+/** Hex 3-ring goal preview (outer / mid / inner) for multiplayer HUD. */
+function GoalRingSwatch({ rings, label }) {
+  if (!Array.isArray(rings) || rings.length < 3) return null
+  return (
+    <div
+      className="hud-goal-swatch-rings"
+      title={label}
+      aria-label={label}
+    >
+      <span className="hud-goal-ring hud-goal-ring--outer" style={{ background: rgbCss(rings[0]) }} />
+      <span className="hud-goal-ring hud-goal-ring--mid" style={{ background: rgbCss(rings[1]) }} />
+      <span className="hud-goal-ring hud-goal-ring--inner" style={{ background: rgbCss(rings[2]) }} />
+    </div>
+  )
+}
+
 export default function SimulatorScreen({ config, onGameEnd }) {
   const [gameState, setGameState] = useState(null)
   const [gameId, setGameId] = useState(null)
@@ -352,6 +373,12 @@ export default function SimulatorScreen({ config, onGameEnd }) {
                   )}
                   <div className="hud-score">{gameState?.score ?? 0}</div>
                   <div className="hud-score-label">{isMulti ? 'P1 Score' : 'Score'}</div>
+                  {gameState?.multiplayer === true && (
+                    <GoalRingSwatch
+                      rings={gameState?.goal_color_rings}
+                      label="P1 goal colors"
+                    />
+                  )}
                 </div>
                 {isMulti && (
                   <div className="hud-player hud-player--p2">
@@ -363,6 +390,12 @@ export default function SimulatorScreen({ config, onGameEnd }) {
                     )}
                     <div className="hud-score">{gameState?.score2 ?? 0}</div>
                     <div className="hud-score-label">P2 Score</div>
+                    {gameState?.multiplayer === true && (
+                      <GoalRingSwatch
+                        rings={gameState?.goal2_color_rings}
+                        label="P2 goal colors"
+                      />
+                    )}
                   </div>
                 )}
               </div>

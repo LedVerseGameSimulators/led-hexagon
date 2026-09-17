@@ -982,17 +982,18 @@ class GameInstance:
         self.revealed_colors[(i, j)] = rings
 
     def _apply_hazard_penalty(self):
-        """Moving-red-style penalty: both scores in 2P + shared HP, rate-limited."""
+        """Moving-red-style penalty: shared HP, rate-limited.
+
+        1P: also −1 score. Multiplayer (Team Battle): lives only — no
+        score/score2 change (plain red and memory DEDUCT both use this).
+        """
         now = time.time()
         if now - self.last_life_loss_time < self._life_count_time:
             return False
-        self.score -= 1
-        if self.score < 0:
-            self.score = 0
-        if self.multiplayer:
-            self.score2 -= 1
-            if self.score2 < 0:
-                self.score2 = 0
+        if not self.multiplayer:
+            self.score -= 1
+            if self.score < 0:
+                self.score = 0
         self.life -= 1
         self.last_life_loss_time = now
         audio = getattr(self, "_audio", None)
@@ -1018,6 +1019,38 @@ class GameInstance:
     def update_state(self, **kwargs):
         """Update game state"""
         self.current_state.update(kwargs)
+
+    def _mp_goal_color_payload(self):
+        """P1/P2 goal colors for HUD when multiplayer; null rings/flats otherwise.
+
+        Hex publishes full 3-ring previews (outer/mid/inner) from
+        `_goal_color_full` / `_goal2_color_full`, falling back to normalizing
+        the flat mid-ring `goal_color` / `goal2_color` when full is missing.
+        Flat `goal_color` / `goal2_color` in state are the mid ring.
+        """
+        if not self.multiplayer:
+            return {
+                "goal_color": None,
+                "goal2_color": None,
+                "goal_color_rings": None,
+                "goal2_color_rings": None,
+            }
+
+        def _rings_for(full, flat):
+            if full is not None:
+                return _normalize_rings(full)
+            if flat is not None:
+                return _normalize_rings(flat)
+            return None
+
+        rings1 = _rings_for(self._goal_color_full, self.goal_color)
+        rings2 = _rings_for(self._goal2_color_full, self.goal2_color)
+        return {
+            "goal_color": (rings1[1] if rings1 else None),
+            "goal2_color": (rings2[1] if rings2 else None),
+            "goal_color_rings": rings1,
+            "goal2_color_rings": rings2,
+        }
 
     def try_score_cell(self, i, j, total_pass=None):
         """Type-aware scoring for a press on cell (i,j):
@@ -1090,9 +1123,11 @@ class GameInstance:
                 self._mark_revealed(i, j, deduct_paint)
                 self._consume_cell(i, j, total_pass)
             else:
-                self.score -= 1
-                if self.score < 0:
-                    self.score = 0
+                # Non-memory DEDUCT: 1P −1 score + life; MP lives only.
+                if not self.multiplayer:
+                    self.score -= 1
+                    if self.score < 0:
+                        self.score = 0
                 self.life -= 1
                 self._consume_cell(i, j, total_pass)
             return
@@ -1788,6 +1823,7 @@ class GameManager:
                             backend_audio_active=getattr(
                                 getattr(game, "_audio", None), "active", False
                             ),
+                            **game._mp_goal_color_payload(),
                         )
 
                         frame_counter["n"] += 1
