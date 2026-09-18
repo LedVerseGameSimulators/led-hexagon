@@ -4,22 +4,34 @@ For studio staff. No coding required.
 
 ---
 
-## Daily use (3 steps)
+## Start
 
-1. **Double-click `START_GAME.bat`**
-   - Checks Python / Node
-   - Turns on **hardware mode** (real floor tiles)
-   - Starts the floor engine, bridge, and game UI
-   - Opens the browser automatically
+1. Double-click **`START_GAME.bat`** in this folder.
+2. Wait until you see **LED Hexagon is running (HARDWARE)**.
+3. The API window must say **HARDWARE MODE ON**.
+4. The browser opens in **fullscreen kiosk** at **http://127.0.0.1:5177/**.
+5. **Ctrl+Shift+K** exits fullscreen only (the game keeps running). Use **`STOP_GAME.bat`** to stop the game.
+6. Leave the minimized service windows open while playing.
+7. When a game starts, the **physical floor** and the on-screen sim both run.
 
-2. **Play in the browser** → [http://localhost:5177](http://localhost:5177)
-   - Choose **Guest** (or card login if RFID is set up)
-   - Pick a level and start
-   - Step on the lit tiles to score
+**Engineers / debug:** use `scripts\start-dev.bat` (normal browser, Vite dev server — not kiosk).
 
-3. **When finished, double-click `STOP_GAME.bat`**
-   - Shuts down all three services
-   - Frees the ports so the next start is clean
+---
+
+## Play
+
+1. On the login screen, scan a card **or** choose **Play as Guest**.
+2. Pick a level and start.
+3. Use **one browser tab only**.
+4. Step on the lit tiles to score.
+
+---
+
+## Stop
+
+1. Double-click **`STOP_GAME.bat`**.
+2. Wait until it says the game stopped.
+3. Close any leftover black windows if they are still open.
 
 ---
 
@@ -37,19 +49,21 @@ Do **not** edit files inside the `games\setting` folder.
 
 | Problem | What to do |
 |--------|------------|
-| Browser does not open / blank page | Wait 20–30 seconds, then open [http://localhost:5177](http://localhost:5177) yourself |
-| “Python was not found” | Ask tech to install Python and tick “Add to PATH” |
-| “Node.js was not found” | Ask tech to install Node.js LTS from nodejs.org |
-| Tiles do not light | Run `STOP_GAME.bat`, unplug/replug USB, run `START_GAME.bat` again |
-| “Port already in use” | Run `STOP_GAME.bat`, wait 5 seconds, then `START_GAME.bat` |
-| Tiles stay lit after stop | Start again, use Stop / Logout in the UI, then `STOP_GAME.bat` |
-| Wrong COM / no floor | Ask tech — settings live in `games\setting` (copied from the original install on `D:\`) |
+| Start says Python not found | Ask tech to install Python 3.11 with "Add to PATH". |
+| Start says Node.js not found | Ask tech to install Node.js LTS. |
+| Start says floor settings missing | Ask tech to copy `games\setting\` files onto this PC (or ensure `D:\ledhexagonv010109\...` is available). |
+| Browser page blank / won't load | Wait 10–15 seconds after start, then refresh. Or run `STOP_GAME.bat`, then `START_GAME.bat` again. |
+| Floor LEDs dark but game runs in browser | Check USB cable to the floor controller. Run start again. |
+| Two games fighting each other / freeze | Close all browser tabs, run `STOP_GAME.bat`, then start once with one tab. |
+| Need to reboot game mid-day | `STOP_GAME.bat` → wait → `START_GAME.bat`. |
+| Tiles stay lit after stop | Start again, use Stop / Logout in the UI, then `STOP_GAME.bat`. |
+| Wrong COM / no floor | Ask tech — settings live in `games\setting` (copied from the original install on `D:\`). |
 
 ---
 
 ## What the three windows are
 
-After start you may see three black command windows. Leave them open while playing:
+After start you may see three minimized command windows. Leave them open while playing:
 
 | Window title | Role |
 |--------------|------|
@@ -61,6 +75,22 @@ Closing them by hand also stops the game; prefer **`STOP_GAME.bat`**.
 
 ---
 
+## Packaging / updates
+
+- Download the latest release zip from **GitHub Releases** (operators do not need git).
+- Extract the zip to a folder on the PC.
+- Double-click **`LED Hexagon.exe`** (or **`START_GAME.bat`** — both start the game the same way).
+- **First time on a new PC:** a technician runs **`SETUP_FIRST_TIME.bat`** once to install Python packages and frontend dependencies. The PC must already have **Python 3.11**, **Node.js LTS**, and **Chrome or Edge** installed.
+- **Updates:** stop the game with `STOP_GAME.bat`, then replace the folder with the new release zip (or drop in the new `LED Hexagon.exe`).
+
+## Notes
+
+- Port used by the game UI: **5177**.
+- These buttons only **run and stop** LED Hexagon on this PC.
+- They do **not** change Wi‑Fi / LAN / RFID server settings.
+
+---
+
 ## Need tech help?
 
-Say what you saw (error text or “tiles dark / browser blank”) and whether `START_GAME.bat` finished or stopped with an error.
+Say what you saw (error text or "tiles dark / browser blank") and whether `START_GAME.bat` finished or stopped with an error.

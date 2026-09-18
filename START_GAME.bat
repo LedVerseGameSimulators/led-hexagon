@@ -5,11 +5,14 @@ REM ============================================================
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
-title LED Hexagon Launcher
+if not defined ACTIVERSE_KIOSK set "ACTIVERSE_KIOSK=1"
+
+title LED Hexagon - Starting
 color 0A
 echo.
 echo  ========================================
 echo   LED Hexagon - starting...
+echo   Mode: HARDWARE + simulator
 echo  ========================================
 echo.
 
@@ -84,27 +87,30 @@ echo  Stopping any previous game session...
 call "%ROOT%\STOP_GAME.bat" /quiet
 ping -n 3 127.0.0.1 >nul
 
-echo  Starting floor engine (API)...
-start "LED Hexagon API" cmd /k "cd /d %ROOT% && set USE_SERIAL_HD=1&& set API_PORT=8004&& python -m uvicorn api.main:app --host 0.0.0.0 --port 8004"
+echo  Starting floor engine with HARDWARE mode (API port 8004)...
+start "LED Hexagon API" /MIN /D "%ROOT%" cmd /k "call scripts\run-api-hardware.bat"
 ping -n 4 127.0.0.1 >nul
 
-echo  Starting bridge...
-start "LED Hexagon Bridge" cmd /k "cd /d %ROOT% && set API_PORT=8004&& set WS_BRIDGE_PORT=8767&& python ws_bridge.py"
+echo  Starting bridge (port 8767)...
+start "LED Hexagon Bridge" /MIN /D "%ROOT%" cmd /k "python ws_bridge.py"
 ping -n 3 127.0.0.1 >nul
 
-echo  Starting game UI...
-start "LED Hexagon UI" cmd /k "cd /d %ROOT%\frontend && set PATH=C:\Program Files\nodejs;%PATH%&& npm run dev"
-echo.
-echo  Waiting for the UI...
+echo  Starting game UI (port 5177)...
+set "WINDOW_TITLE_UI=LED Hexagon UI"
+call "%ROOT%\scripts\kiosk\run-ui-prod.bat" 5177
+if errorlevel 1 goto :fail
+ping -n 5 127.0.0.1 >nul
 
+echo  Waiting for the UI...
 set /a _tries=0
+
 :waitui
 set /a _tries+=1
-powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://localhost:5177/; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:5177/; if ($r.StatusCode -ge 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if not errorlevel 1 goto :uiready
-if !_tries! GEQ 45 (
+if !_tries! GEQ 30 (
   echo  WARNING: UI did not respond in time. Opening browser anyway.
-  goto :openbrowser
+  goto :check_hw
 )
 ping -n 2 127.0.0.1 >nul
 goto :waitui
@@ -112,15 +118,21 @@ goto :waitui
 :uiready
 echo  UI is ready.
 
-:openbrowser
+:check_hw
+echo  Checking hardware mode...
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://localhost:8004/hw-debug' -TimeoutSec 5; if ($r.use_serial_hd) { Write-Host 'HARDWARE MODE: ON' } else { Write-Host 'ERROR: HARDWARE MODE OFF - floor will stay dark'; exit 2 } } catch { Write-Host 'WARNING: could not confirm hardware mode yet'; exit 0 }"
+if errorlevel 2 goto :fail
+
+call "%ROOT%\scripts\kiosk\open-ui.bat" 5177 hexagon
+
 echo.
 echo  ========================================
-echo   LED Hexagon is running
-echo   Open:  http://localhost:5177
+echo   LED Hexagon is running (HARDWARE)
+echo   Open:  http://127.0.0.1:5177/
+echo   Ctrl+Shift+K exits fullscreen kiosk
+echo   To stop: double-click STOP_GAME.bat
 echo  ========================================
 echo.
-start "" "http://localhost:5177/"
-ping -n 3 127.0.0.1 >nul
 exit /b 0
 
 :fail

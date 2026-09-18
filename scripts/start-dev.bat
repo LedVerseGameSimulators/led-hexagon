@@ -1,6 +1,7 @@
 @echo off
 REM Start Hexagon dev stack (API 8004, ws_bridge 8767, UI 5177).
 setlocal
+set ACTIVERSE_KIOSK=0
 cd /d "%~dp0.."
 
 echo ==^> LED Hexagon dev stack from %CD%
