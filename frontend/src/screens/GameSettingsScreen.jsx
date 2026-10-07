@@ -3,19 +3,19 @@ import { useMemo, useState } from 'react'
 import VideoBackground from '../components/VideoBackground'
 import {
   HOW_TO_BULLETS,
-  QUICK_PLAY_LEVELS,
-  TEAM_BATTLE_LEVELS,
+  idsForPlayMode,
 } from '../levelPlaylists'
 
 export default function GameSettingsScreen({
   game,
   playerCount,
   playMode = 'single',
+  playlists,
   onConfirm,
   onBack,
 }) {
   const players = playerCount ?? 1
-  const ids = players === 2 ? TEAM_BATTLE_LEVELS : QUICK_PLAY_LEVELS
+  const ids = idsForPlayMode(playlists, players === 2 ? 'multi' : playMode)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const modeName = players === 2 ? 'Team Battle' : 'Quick Play'
 

@@ -1,0 +1,33 @@
+{
+  "single": [
+    { "id": "03", "path": "games/source/-/03.led" },
+    { "id": "04", "path": "games/source/-/04.led" },
+    { "id": "05", "path": "games/source/-/05.led" },
+    { "id": "08", "path": "games/source/-/08.led" },
+    { "id": "09", "path": "games/source/-/09.led" },
+    { "id": "YC01", "path": "games/source/--/YC01.led" },
+    { "id": "YC03", "path": "games/source/--/YC03.led" },
+    { "id": "YC05", "path": "games/source/--/YC05.led" },
+    { "id": "YC07", "path": "games/source/--/YC07.led" },
+    { "id": "YC08", "path": "games/source/--/YC08.led" }
+  ],
+  "multi": [
+    { "id": "DK01", "path": "games/source/---/DK01.ledb" },
+    { "id": "DK02", "path": "games/source/---/DK02.ledb" },
+    { "id": "DK04", "path": "games/source/---/DK04.ledb" },
+    { "id": "DK05", "path": "games/source/---/DK05.ledb" },
+    { "id": "YCDK02", "path": "games/source/---/YCDK02.ledb" }
+  ],
+  "group": [
+    { "id": "05", "path": "games/source_group/-/05.led" },
+    { "id": "06", "path": "games/source_group/-/06.led" },
+    { "id": "07", "path": "games/source_group/-/07.led" },
+    { "id": "08", "path": "games/source_group/-/08.led" },
+    { "id": "09", "path": "games/source_group/-/09.led" },
+    { "id": "YC01", "path": "games/source_group/--/YC01.led" },
+    { "id": "YC02", "path": "games/source_group/--/YC02.led" },
+    { "id": "YC03", "path": "games/source_group/--/YC03.led" },
+    { "id": "YC04", "path": "games/source_group/--/YC04.led" },
+    { "id": "YC05", "path": "games/source_group/--/YC05.led" }
+  ]
+}

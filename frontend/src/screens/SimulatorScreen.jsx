@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 
 import { API_URL, WS_BRIDGE_URL } from '../config'
-import { formatLevelLabel, TOURNAMENT_LEVEL_ORDER } from '../levelPlaylists'
+import { formatLevelLabel, firstPlaylistId } from '../levelPlaylists'
 
 function countdownDisplay(state) {
   if (!state || state.phase !== 'countdown') return null
@@ -54,7 +54,16 @@ function GoalRingSwatch({ rings, label }) {
   )
 }
 
-export default function SimulatorScreen({ config, onGameEnd }) {
+function effectivePlayerCount(config) {
+  if (config.playMode === 'group') return 1
+  if (config.cardId2) return 2
+  if ((config.playerCount || 1) >= 2) return 2
+  const stem = String(config.level || '').toUpperCase()
+  if (stem.startsWith('DK') || stem.startsWith('YCDK')) return 2
+  return config.playerCount || 1
+}
+
+export default function SimulatorScreen({ config, playlists, onGameEnd }) {
   const [gameState, setGameState] = useState(null)
   const [gameId, setGameId] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -109,8 +118,9 @@ export default function SimulatorScreen({ config, onGameEnd }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             card_id: config.cardId,
-            level: config.playMode === 'group' ? (config.level || 'auto') : (config.level || '17'),
+            level: config.playMode === 'group' ? (config.level || 'auto') : (config.level || '03'),
             difficulty: config.difficulty || 'normal',
+            player_count: config.playMode === 'group' ? 1 : effectivePlayerCount(config),
             ...(config.playMode === 'group' ? { mode: 'group' } : {}),
           })
         })
@@ -149,11 +159,11 @@ export default function SimulatorScreen({ config, onGameEnd }) {
     // Real file stems are only used to load levels via start-game (config.level).
     const startStem =
       config.playMode === 'group' && (!config.level || config.level === 'auto')
-        ? TOURNAMENT_LEVEL_ORDER[0]
+        ? (firstPlaylistId(playlists, 'group') || '')
         : (config.level || '')
     const endStem = st.current_level ?? startStem
-    const levelLabel = formatLevelLabel(config.playMode, startStem)
-    const endLevelLabel = formatLevelLabel(config.playMode, endStem)
+    const levelLabel = formatLevelLabel(config.playMode, startStem, playlists)
+    const endLevelLabel = formatLevelLabel(config.playMode, endStem, playlists)
     // Guests (no RFID): skip save-score only. Always stop the backend game
     // so BGM / session teardown still run.
     const hasRfidCard = Boolean(config.cardId && String(config.cardId).trim())
@@ -284,7 +294,7 @@ export default function SimulatorScreen({ config, onGameEnd }) {
   const p1Name = config.playerName || 'Player 1'
   const p2Name = config.playerName2 || 'Player 2'
   const currentLevelRaw = gameState?.current_level ?? config.level
-  const currentLevelLabel = formatLevelLabel(config.playMode, currentLevelRaw)
+  const currentLevelLabel = formatLevelLabel(config.playMode, currentLevelRaw, playlists)
 
   return (
     <div className="simulator-container">

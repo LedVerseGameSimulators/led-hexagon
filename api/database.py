@@ -24,10 +24,23 @@ class Database:
     """Wrapper around game's db_operation.py"""
 
     def __init__(self):
-        self.db_op = DBOperation()
+        self.db_op = None
+        if DBOperation:
+            try:
+                # Match Climb/Hoops: decompiled DBOperation needs ip_address;
+                # headless/TestClient must not crash if MySQL is unavailable.
+                self.db_op = DBOperation("localhost")
+                logger.info(f"Database connected to {DB_NAME}")
+            except TypeError:
+                try:
+                    self.db_op = DBOperation()
+                    logger.info(f"Database connected to {DB_NAME}")
+                except Exception as e:
+                    logger.warning(f"DBOperation init failed (OK for headless testing): {e}")
+            except Exception as e:
+                logger.warning(f"DBOperation init failed (OK for headless testing): {e}")
         self._scores_lock = threading.Lock()
         self._ensure_scores_table()
-        logger.info(f"Database connected to {DB_NAME}")
 
     # ===== OUR SCORES TABLE (kiosk leaderboard) =====
     def _scores_conn(self):
