@@ -17,6 +17,7 @@ _AUDIO_DIR = GAMES_ROOT / "audio"
 _CMD_START_BGM = "start_bgm"
 _CMD_STOP_BGM = "stop_bgm"
 _CMD_PLAY_FILE = "play_file"
+_CMD_PLAY_TRANSITION = "play_transition"
 
 
 class AudioManager:
@@ -65,6 +66,8 @@ class AudioManager:
                 elif cmd == _CMD_PLAY_FILE:
                     path, loops = payload  # type: ignore[misc]
                     self._play_file_locked(path, music=False, loops=loops)
+                elif cmd == _CMD_PLAY_TRANSITION:
+                    self._play_transition_locked()
             except Exception as exc:
                 logger.debug(f"Audio worker skip ({cmd}): {exc}")
             finally:
@@ -78,6 +81,19 @@ class AudioManager:
         except Exception:
             pass
 
+    def _play_transition_locked(self) -> None:
+        self._stop_bgm_locked()
+        path = self._stinger_path
+        if not self._enabled or not path.is_file():
+            logger.warning(f"Transition stinger missing: {path}")
+            return
+        try:
+            self._music.load(str(path))
+            self._music.play(0)
+        except Exception as exc:
+            logger.warning(f"Transition stinger (music) failed: {exc}")
+            self._play_file_locked(path, music=False, loops=0)
+
     def _play_file_locked(self, path: Path, *, music: bool = False, loops: int = 0) -> None:
         if not self._enabled or not path.is_file():
             return
@@ -87,7 +103,9 @@ class AudioManager:
                 self._music.play(loops)
             else:
                 sound = self._mixer.Sound(str(path))
-                sound.play()
+                ch = self._mixer.find_channel(True)
+                if ch:
+                    ch.play(sound)
         except Exception as exc:
             logger.debug(f"Audio play skipped ({path.name}): {exc}")
 
@@ -104,7 +122,7 @@ class AudioManager:
         self._enqueue(_CMD_STOP_BGM)
 
     def play_stinger(self) -> None:
-        self._enqueue(_CMD_PLAY_FILE, (self._stinger_path, 0))
+        self._enqueue(_CMD_PLAY_TRANSITION)
 
     def play_countdown_tick(self) -> None:
         self._enqueue(_CMD_PLAY_FILE, (self._countdown_path, 0))

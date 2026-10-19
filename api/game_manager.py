@@ -2229,12 +2229,12 @@ class GameManager:
                     _run_effect_led(str(_effects_path("countdown.led")), "countdown")
 
                 def _run_clear_hold():
-                    _run_effect_led(str(_effects_path("level_clear.led")), "level_clear")
                     audio.play_stinger()
+                    _run_effect_led(str(_effects_path("level_clear.led")), "level_clear")
 
                 def _run_fail_hold():
-                    _run_effect_led(str(_effects_path("level_fail.led")), "level_fail")
                     audio.play_stinger()
+                    _run_effect_led(str(_effects_path("level_fail.led")), "level_fail")
 
                 def _finish_session():
                     if session_end_handled["done"]:

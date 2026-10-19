@@ -1,13 +1,3 @@
-# Hexagon / Arena audio (effects contract)
-
-Runtime (`api/audio_manager.py`) uses legacy names; venue pack mapped onto them:
-
-| Runtime file | Role | Notes |
-|--------------|------|-------|
-| `bgm.mp3` | BGM | From Battle Arena pack (TRON End of Line) |
-| `prompt.mp3` | +score | From pack positive |
-| `broken2.mp3` | −score | From pack negative |
-| `countdown.mp3` | tick | **Stock** short beep (was a long countdown track) |
-| `transition_stinger.mp3` | clear/fail | **Stock** tone for now |
-
-Also present as aliases: `score_positive.mp3`, `score_negative.mp3`, `countdown_tick.mp3`.
+version https://git-lfs.github.com/spec/v1
+oid sha256:0fbb07154ba0ac3a1560d89c89fde59c6a3f2b21eae56b01cda9cb9a660f5c8a
+size 589
