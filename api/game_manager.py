@@ -2161,6 +2161,13 @@ class GameManager:
                     def _effect_cb(play_self, dgroup, time_pass, total_pass):
                         if not game.running or total_pass >= board_t:
                             return False
+                        if (
+                            phase_name in ("level_clear", "level_fail")
+                            and total_pass < 0.05
+                            and not getattr(game, "_effect_stinger_sent", False)
+                        ):
+                            audio.play_stinger()
+                            game._effect_stinger_sent = True
                         grid_eff = led_table.led_table
                         led_display = [
                             _normalize_rings(cell)
@@ -2218,6 +2225,7 @@ class GameManager:
                         time.sleep(0.01)
                         return True
 
+                    game._effect_stinger_sent = False
                     _set_phase(game, phase_name, False)
                     play.callback = _effect_cb
                     play.running_state = True
@@ -2229,11 +2237,9 @@ class GameManager:
                     _run_effect_led(str(_effects_path("countdown.led")), "countdown")
 
                 def _run_clear_hold():
-                    audio.play_stinger()
                     _run_effect_led(str(_effects_path("level_clear.led")), "level_clear")
 
                 def _run_fail_hold():
-                    audio.play_stinger()
                     _run_effect_led(str(_effects_path("level_fail.led")), "level_fail")
 
                 def _finish_session():
