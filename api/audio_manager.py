@@ -82,7 +82,7 @@ class AudioManager:
                     path, loops = payload  # type: ignore[misc]
                     self._play_file_locked(path, music=False, loops=loops)
                 elif cmd == _CMD_PLAY_TRANSITION:
-                    self._play_transition_locked()
+                    self._play_transition_locked(payload)
             except Exception as exc:
                 logger.debug(f"Audio worker skip ({cmd}): {exc}")
             finally:
@@ -100,9 +100,13 @@ class AudioManager:
         except Exception:
             pass
 
-    def _play_transition_locked(self) -> None:
+    def _play_transition_locked(self, phase: str | None = None) -> None:
         self._stop_bgm_locked()
         path = self._stinger_path
+        if phase in ("level_clear", "level_fail"):
+            cand = _AUDIO_DIR / f"{phase}.mp3"
+            if cand.is_file():
+                path = cand
         if not self._enabled or not _audio_file_usable(path):
             logger.warning(f"Transition stinger missing or unusable: {path}")
             return
@@ -149,8 +153,8 @@ class AudioManager:
     def stop_bgm(self) -> None:
         self._enqueue(_CMD_STOP_BGM)
 
-    def play_stinger(self) -> None:
-        self._enqueue(_CMD_PLAY_TRANSITION)
+    def play_stinger(self, phase: str | None = None) -> None:
+        self._enqueue(_CMD_PLAY_TRANSITION, phase)
 
     def play_countdown_tick(self) -> None:
         self._enqueue(_CMD_PLAY_FILE, (self._countdown_path, 0))

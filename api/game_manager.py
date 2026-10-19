@@ -2166,7 +2166,7 @@ class GameManager:
                             and total_pass < 0.05
                             and not getattr(game, "_effect_stinger_sent", False)
                         ):
-                            audio.play_stinger()
+                            audio.play_stinger(phase_name)
                             game._effect_stinger_sent = True
                         grid_eff = led_table.led_table
                         led_display = [
