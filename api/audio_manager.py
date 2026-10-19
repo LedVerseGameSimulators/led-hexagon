@@ -20,6 +20,21 @@ _CMD_PLAY_FILE = "play_file"
 _CMD_PLAY_TRANSITION = "play_transition"
 
 
+def _audio_file_usable(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        with open(path, "rb") as fh:
+            if fh.read(8).startswith(b"version "):
+                logger.warning(
+                    f"Audio file is a Git LFS pointer — run git lfs pull: {path}"
+                )
+                return False
+    except OSError:
+        return False
+    return True
+
+
 class AudioManager:
     """Fire-and-forget SFX/BGM — never blocks the game thread."""
 
@@ -48,7 +63,7 @@ class AudioManager:
             import pygame
 
             if not pygame.mixer.get_init():
-                pygame.mixer.init()
+                pygame.mixer.init(frequency=22050, size=-16, channels=8, buffer=512)
             self._mixer = pygame.mixer
             self._music = pygame.mixer.music
         except Exception as exc:
@@ -80,19 +95,32 @@ class AudioManager:
             self._music.stop()
         except Exception:
             pass
+        try:
+            self._music.unload()
+        except Exception:
+            pass
 
     def _play_transition_locked(self) -> None:
         self._stop_bgm_locked()
         path = self._stinger_path
-        if not self._enabled or not path.is_file():
-            logger.warning(f"Transition stinger missing: {path}")
+        if not self._enabled or not _audio_file_usable(path):
+            logger.warning(f"Transition stinger missing or unusable: {path}")
             return
         try:
+            ch = self._mixer.find_channel(True)
+            if ch:
+                ch.set_volume(1.0)
+                ch.play(self._mixer.Sound(str(path)))
+                logger.info("Transition stinger played (sfx)")
+                return
+        except Exception as exc:
+            logger.warning(f"Transition stinger (sfx) failed: {exc}")
+        try:
             self._music.load(str(path))
-            self._music.play(0)
+            self._music.play(loops=0)
+            logger.info("Transition stinger played (music)")
         except Exception as exc:
             logger.warning(f"Transition stinger (music) failed: {exc}")
-            self._play_file_locked(path, music=False, loops=0)
 
     def _play_file_locked(self, path: Path, *, music: bool = False, loops: int = 0) -> None:
         if not self._enabled or not path.is_file():
