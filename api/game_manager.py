@@ -733,6 +733,28 @@ def _build_playlist_sequence(mode_key: str, start_id: str):
     return seq
 
 
+def _playlist_mode_key_for_level(level_id, game_mode: Optional[str]) -> str:
+    if (game_mode or "").strip().lower() == "group":
+        return "group"
+    level_str = str(level_id or "").strip()
+    data = _load_mode_playlists()
+    multi_ids = {e.get("id") for e in (data.get("multi") or [])}
+    if level_str in multi_ids:
+        return "multi"
+    return "single"
+
+
+def validate_playlist_start(level, mode: Optional[str] = None) -> None:
+    """Raise ValueError if start level is not in the mode playlist."""
+    if not _mode_playlists_active():
+        return
+    if (mode or "").strip().lower() == "group":
+        _build_playlist_sequence("group", "auto")
+        return
+    mode_key = _playlist_mode_key_for_level(level, mode)
+    _build_playlist_sequence(mode_key, level)
+
+
 def _load_level_file(path):
     """Load one .led/.ledb: unzip, find the main gameplay shelve (dict_group
     + para_key_game), return (dict_group, game_obj) as in-memory objects.

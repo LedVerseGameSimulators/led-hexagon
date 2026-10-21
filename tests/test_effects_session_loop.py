@@ -44,6 +44,8 @@ def _wait_until(client, game_id: str, predicate, timeout: float = 15.0):
 
 
 def _start_session(client, monkeypatch, *, levels=None, session_sec: str = "120", life: str = "20"):
+    monkeypatch.setattr("api.game_manager._mode_playlists_active", lambda: False)
+    monkeypatch.setenv("ALLOW_LEGACY_MARATHON", "1")
     if levels is not None:
         monkeypatch.setattr(
             "api.game_manager._build_level_sequence",
@@ -225,6 +227,34 @@ def test_effect_led_fixture_shape(load_level_archive):
             assert len(groups) == 1
         for group in groups.values():
             assert len(group.start_member) == 33
+
+
+def test_start_game_rejects_unknown_playlist_id(client, monkeypatch):
+    monkeypatch.setattr("api.main.game_manager.start_game", lambda _gid: None)
+    resp = client.post(
+        "/start-game",
+        json={"card_id": "TEST001", "level": "fast_clear", "difficulty": "easy"},
+    )
+    data = resp.json()
+    assert data.get("success") is False
+    assert "fast_clear" in data.get("error", "")
+
+
+def test_start_game_accepts_valid_playlist_id(client, monkeypatch):
+    started = []
+
+    def capture_start(game_id):
+        started.append(game_id)
+
+    monkeypatch.setattr("api.main.game_manager.start_game", capture_start)
+    resp = client.post(
+        "/start-game",
+        json={"card_id": "TEST001", "level": "03", "difficulty": "easy"},
+    )
+    data = resp.json()
+    assert data.get("success") is True, data
+    assert data.get("game_id")
+    assert started == [data["game_id"]]
 
 
 @pytest.fixture(scope="session")
