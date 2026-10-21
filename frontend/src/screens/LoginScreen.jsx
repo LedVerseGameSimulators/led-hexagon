@@ -8,6 +8,27 @@ function normalizeCardId(raw) {
   return String(raw ?? '').replace(/[\r\n]/g, '').trim()
 }
 
+function canonicalCardId(scanned, validateData) {
+  const fromApi = normalizeCardId(validateData?.card_id)
+  return fromApi || normalizeCardId(scanned)
+}
+
+function sameCardId(a, b) {
+  const x = normalizeCardId(a)
+  const y = normalizeCardId(b)
+  return Boolean(x && y && x.toLowerCase() === y.toLowerCase())
+}
+
+function sameGroupId(p1Validate, p2Validate) {
+  const g1 = p1Validate?.group_id
+  const g2 = p2Validate?.group_id
+  return g1 != null && g2 != null && g1 === g2
+}
+
+const ERR_DIFFERENT_CARD = 'Each player needs a different card'
+const ERR_DIFFERENT_GROUP =
+  'Team Battle needs two different groups — scan the other team\'s leader card'
+
 function validationError(data) {
   if (data.reason === 'insufficient_time') {
     return `Not enough time (${data.minutes_remaining} min left). Need at least 5 min.`
@@ -79,8 +100,8 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
       const other = which === 1
         ? normalizeCardId(card2Ref.current?.value || card2)
         : normalizeCardId(card1Ref.current?.value || card1)
-      if (other && cardId === other) {
-        setError('Each player needs a different card')
+      if (other && sameCardId(cardId, other)) {
+        setError(ERR_DIFFERENT_CARD)
         if (which === 1) {
           setP1Info(null)
           setValidatedCard1('')
@@ -98,13 +119,46 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
     try {
       const data = await validateRfidCard(cardId)
       if (data.valid) {
+        const canonical = canonicalCardId(cardId, data)
+        if (which === 2 && playerCount === 2) {
+          const p1Card = validatedCard1 || normalizeCardId(card1Ref.current?.value || card1)
+          if (sameCardId(canonical, p1Card)) {
+            setP2Info(null)
+            setValidatedCard2('')
+            setError(ERR_DIFFERENT_CARD)
+            return
+          }
+          if (p1Info && sameGroupId(p1Info, data)) {
+            setP2Info(null)
+            setValidatedCard2('')
+            setError(ERR_DIFFERENT_GROUP)
+            return
+          }
+        }
+        if (which === 1 && playerCount === 2 && p2Valid) {
+          const p2Card = validatedCard2 || normalizeCardId(card2Ref.current?.value || card2)
+          if (sameCardId(canonical, p2Card)) {
+            setP1Info(null)
+            setValidatedCard1('')
+            setError(ERR_DIFFERENT_CARD)
+            return
+          }
+          if (p2Info && sameGroupId(data, p2Info)) {
+            setP1Info(null)
+            setValidatedCard1('')
+            setError(ERR_DIFFERENT_GROUP)
+            return
+          }
+        }
         ok = true
         if (which === 1) {
           setP1Info(data)
-          setValidatedCard1(cardId)
+          setValidatedCard1(canonical)
+          setCard1(canonical)
         } else {
           setP2Info(data)
-          setValidatedCard2(cardId)
+          setValidatedCard2(canonical)
+          setCard2(canonical)
         }
       } else {
         if (which === 1) {
@@ -151,8 +205,12 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
 
   const handleStartGame = () => {
     if (!canStart || validating) return
-    if (playerCount === 2 && validatedCard1 === validatedCard2) {
-      setError('Each player needs a different card')
+    if (playerCount === 2 && sameCardId(validatedCard1, validatedCard2)) {
+      setError(ERR_DIFFERENT_CARD)
+      return
+    }
+    if (playerCount === 2 && p1Info && p2Info && sameGroupId(p1Info, p2Info)) {
+      setError(ERR_DIFFERENT_GROUP)
       return
     }
     onLogin(
@@ -161,7 +219,9 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
       p1Info.player_name || '',
       p2Info?.player_name || '',
       p1Info.minutes_remaining ?? null,
-      p2Info?.minutes_remaining ?? null
+      p2Info?.minutes_remaining ?? null,
+      p1Info,
+      playerCount === 2 ? p2Info : null
     )
   }
 
@@ -179,7 +239,7 @@ export default function LoginScreen({ gameTitle = 'Battle Arena', onLogin, playe
 
   const handlePlayWithoutRfid = () => {
     const { playerName, playerName2 } = randomGuestNames(playerCount)
-    onLogin('', playerCount === 2 ? '' : null, playerName, playerName2, null, null)
+    onLogin('', playerCount === 2 ? '' : null, playerName, playerName2, null, null, null, null)
   }
 
   const statusReady = canStart

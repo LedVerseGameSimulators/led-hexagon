@@ -6,6 +6,7 @@ import SimulatorScreen from './screens/SimulatorScreen'
 import ResultScreen    from './screens/ResultScreen'
 
 import { API_URL } from './config'
+import { loadGameResumeContext } from './gameResumeStorage'
 import VideoBackground from './components/VideoBackground'
 
 const S = {
@@ -28,6 +29,8 @@ const DEFAULT_CONFIG = {
   playerName2: '',
   minutesRemaining: null,
   minutesRemaining2: null,
+  rfidValidate1: null,
+  rfidValidate2: null,
 }
 
 export default function App() {
@@ -49,12 +52,26 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
+          const restored = loadGameResumeContext(d.game_id)
           setGameConfig((prev) => ({
             ...prev,
-            cardId: d.card_id,
+            cardId: restored?.cardId || d.card_id,
             level: d.level,
             difficulty: d.difficulty,
             resumeGameId: d.game_id,
+            ...(restored && restored.game_id === d.game_id
+              ? {
+                  playMode: restored.playMode ?? prev.playMode,
+                  playerCount: restored.playerCount ?? prev.playerCount,
+                  cardId2: restored.cardId2 ?? '',
+                  rfidValidate1: restored.rfidValidate1 ?? null,
+                  rfidValidate2: restored.rfidValidate2 ?? null,
+                  playerName: restored.playerName ?? '',
+                  playerName2: restored.playerName2 ?? '',
+                  minutesRemaining: restored.minutesRemaining ?? null,
+                  minutesRemaining2: restored.minutesRemaining2 ?? null,
+                }
+              : {}),
           }))
           setScreen(S.SIMULATOR)
         }
@@ -83,7 +100,9 @@ export default function App() {
     playerName = '',
     playerName2 = '',
     minutesRemaining = null,
-    minutesRemaining2 = null
+    minutesRemaining2 = null,
+    rfidValidate1 = null,
+    rfidValidate2 = null
   ) => {
     setGameConfig((prev) => ({
       ...prev,
@@ -93,6 +112,8 @@ export default function App() {
       playerName2: playerName2 || '',
       minutesRemaining,
       minutesRemaining2,
+      rfidValidate1: rfidValidate1?.valid ? rfidValidate1 : null,
+      rfidValidate2: rfidValidate2?.valid ? rfidValidate2 : null,
     }))
     setScreen(S.COUNTDOWN)
   }
