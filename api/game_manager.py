@@ -19,6 +19,7 @@ from .config import (
     GAME_GROUP_LEVEL_DIR,
 )
 from .audio_manager import AudioManager
+from .runtime_paths import install_root
 
 EFFECTS_DIR = Path(
     os.environ.get("HEX_EFFECTS_DIR", str(GAMES_ROOT / "source" / "effects"))
@@ -652,11 +653,12 @@ def _build_group_level_sequence(start_level=None):
 
 
 _MODE_PLAYLISTS_CACHE = None
-_HEX_REPO_ROOT = Path(__file__).resolve().parent.parent
+_HEX_REPO_ROOT = install_root()
 
 
 def _mode_playlists_json_path():
-    return Path(__file__).resolve().parent / "mode_playlists.json"
+    # install_root()/api/mode_playlists.json (frozen __file__ is not under api/)
+    return install_root() / "api" / "mode_playlists.json"
 
 
 def _load_mode_playlists():
